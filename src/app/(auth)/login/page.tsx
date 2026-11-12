@@ -31,7 +31,7 @@ function LoginForm() {
 
   return (
     <form onSubmit={submit} className="space-y-4" noValidate>
-      <h1 className="text-xl font-bold">Log in</h1>
+      <div><h1 className="text-2xl font-semibold tracking-tight">Welcome back</h1><p className="mt-1 text-sm text-muted">Pick up where you left off.</p></div>
       {error && <ErrorBox message={error} />}
       <Field label="Email">
         <Input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
@@ -46,10 +46,13 @@ function LoginForm() {
           Create an account
         </Link>
       </p>
-      <div className="rounded-xl bg-white p-3 text-xs text-muted border border-line">
-        <p className="font-semibold text-ink">Demo accounts (sample data)</p>
-        <p>coach@demo.test · alex@demo.test · sam@demo.test — password <code>demo-pass-123</code></p>
-      </div>
+      {/* Only on local/demo setups: set NEXT_PUBLIC_SHOW_DEMO_LOGINS=true. Never in production. */}
+      {process.env.NEXT_PUBLIC_SHOW_DEMO_LOGINS === "true" && (
+        <div className="rounded-xl bg-surface-2 p-3 text-xs leading-relaxed text-muted">
+          <p className="font-semibold text-ink">Demo accounts (sample data)</p>
+          <p>coach@demo.test · alex@demo.test · sam@demo.test. Password: <code>demo-pass-123</code></p>
+        </div>
+      )}
     </form>
   );
 }

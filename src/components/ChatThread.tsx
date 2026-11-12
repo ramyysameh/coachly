@@ -119,9 +119,9 @@ export default function ChatThread({ conversationId, otherName, canSend }: { con
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center justify-between border-b border-line px-4 py-3">
         <div>
-          <p className="font-bold">{otherName}</p>
+          <p className="font-semibold">{otherName}</p>
           <p className="flex items-center gap-1.5 text-xs text-muted">
-            <span className={cn("size-2 rounded-full", live ? "bg-emerald-500" : "bg-slate-300")} aria-hidden />
+            <span className={cn("size-2 rounded-full", live ? "bg-brand" : "bg-line")} aria-hidden />
             {live ? "Live" : "Connecting…"}
           </p>
         </div>
@@ -143,15 +143,15 @@ export default function ChatThread({ conversationId, otherName, canSend }: { con
                 {showTime && <p className="my-2 text-center text-[11px] font-medium text-muted">{fmtDateTime(m.created_at)}</p>}
                 <div className={cn("flex", mine ? "justify-end" : "justify-start")}>
                   <div className={cn("max-w-[80%] rounded-2xl px-3.5 py-2 text-[15px] leading-snug whitespace-pre-wrap break-words",
-                    mine ? "rounded-br-md bg-brand text-white" : "rounded-bl-md border border-line bg-white text-ink",
-                    m.state === "failed" && "bg-red-50 text-red-900 border border-red-200")}>
+                    mine ? "rounded-br-md bg-brand text-brand-fg" : "rounded-bl-md border border-line bg-surface text-ink",
+                    m.state === "failed" && "bg-danger-bg text-danger border border-danger-line")}>
                     {m.body}
                   </div>
                 </div>
                 <div className={cn("mt-0.5 flex items-center gap-1 text-[11px] text-muted", mine ? "justify-end" : "justify-start")}>
                   {m.state === "sending" && <><Loader2 className="size-3 animate-spin" /> Sending…</>}
                   {m.state === "failed" && (
-                    <button onClick={() => deliver(m)} className="flex min-h-8 items-center gap-1 font-semibold text-red-700">
+                    <button onClick={() => deliver(m)} className="flex min-h-8 items-center gap-1 font-semibold text-danger">
                       <AlertCircle className="size-3.5" /> Not sent · <RotateCw className="size-3" /> Retry
                     </button>
                   )}
@@ -165,7 +165,7 @@ export default function ChatThread({ conversationId, otherName, canSend }: { con
       </div>
 
       {canSend ? (
-        <form onSubmit={send} className="flex items-end gap-2 border-t border-line bg-white p-2">
+        <form onSubmit={send} className="flex items-end gap-2 border-t border-line bg-surface p-2">
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
@@ -177,7 +177,7 @@ export default function ChatThread({ conversationId, otherName, canSend }: { con
             aria-label="Message"
             className="max-h-32 min-h-12 flex-1 resize-none rounded-2xl border border-line px-4 py-3 text-base focus:border-brand focus:outline-none"
           />
-          <button type="submit" disabled={!text.trim()} className="flex size-12 shrink-0 items-center justify-center rounded-full bg-brand text-white disabled:opacity-40" aria-label="Send">
+          <button type="submit" disabled={!text.trim()} className="flex size-12 shrink-0 items-center justify-center rounded-full bg-brand text-brand-fg disabled:opacity-40" aria-label="Send">
             <Send className="size-5" />
           </button>
         </form>

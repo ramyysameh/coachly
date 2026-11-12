@@ -66,7 +66,7 @@ function ClientProfileInner({ id }: { id: string }) {
       <div className="flex flex-wrap items-center gap-3">
         <Avatar name={client.full_name} />
         <div className="min-w-0 flex-1">
-          <h1 className="flex items-center gap-2 text-2xl font-bold">
+          <h1 className="flex items-center gap-2 text-2xl font-semibold">
             <span className="truncate">{client.full_name}</span>
             {!active && <Badge>Archived</Badge>}
           </h1>
@@ -95,7 +95,7 @@ function ClientProfileInner({ id }: { id: string }) {
       />
 
       {(tab === "workouts" || tab === "progress") && (
-        <div className="flex flex-wrap items-end gap-2 rounded-2xl border border-line bg-white p-3">
+        <div className="flex flex-wrap items-end gap-2 rounded-2xl border border-line bg-surface p-3">
           <Field label="From"><Input type="date" value={from} max={to} onChange={(e) => e.target.value && setFrom(e.target.value)} /></Field>
           <Field label="To"><Input type="date" value={to} min={from} onChange={(e) => e.target.value && setTo(e.target.value)} /></Field>
           <div className="flex gap-1 pb-0.5">
@@ -162,7 +162,7 @@ function PlanTab({ clientId, active }: { clientId: string; active: boolean }) {
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-brand">Assigned split</p>
-              <p className="text-lg font-bold">{data.plan.name}</p>
+              <p className="text-lg font-semibold">{data.plan.name}</p>
               <p className="text-sm text-muted">From {fmtDate(data.plan.start_date!)}</p>
             </div>
             {active && <LinkButton href={`/coach/plans/${data.plan.id}`} variant="secondary"><Pencil className="size-4" /> Edit plan</LinkButton>}
@@ -172,7 +172,7 @@ function PlanTab({ clientId, active }: { clientId: string; active: boolean }) {
               <div key={d.id} className="rounded-xl border border-line p-3">
                 <p className="font-semibold">{d.name} <span className="text-xs font-normal text-muted">{d.weekdays.map((w) => WEEKDAYS[w - 1]).join("/") || "unscheduled"}</span></p>
                 <ul className="mt-1 text-sm text-muted">
-                  {d.plan_exercises.map((pe) => <li key={pe.id}>{pe.exercises.name} — {pe.target_sets}×{pe.rep_min}–{pe.rep_max}</li>)}
+                  {d.plan_exercises.map((pe) => <li key={pe.id}>{pe.exercises.name}: {pe.target_sets}×{pe.rep_min}-{pe.rep_max}</li>)}
                 </ul>
               </div>
             ))}
@@ -185,7 +185,7 @@ function PlanTab({ clientId, active }: { clientId: string; active: boolean }) {
       {active && (
         <Card>
           <form onSubmit={assign} className="space-y-3" noValidate>
-            <h2 className="font-bold">{data.plan ? "Assign a new plan" : "Assign a plan"}</h2>
+            <h2 className="font-semibold">{data.plan ? "Assign a new plan" : "Assign a plan"}</h2>
             <p className="text-sm text-muted">The template is copied for this client, so you can customise it without changing the template. {data.plan && "The current plan is replaced; logged workouts are kept."}</p>
             {data.templates.length === 0 ? (
               <p className="text-sm">You have no templates yet. <Link href="/coach/plans" className="font-semibold text-brand">Create one</Link>.</p>
@@ -211,7 +211,7 @@ function PlanTab({ clientId, active }: { clientId: string; active: boolean }) {
 
       {data.history.length > 1 && (
         <Card>
-          <h2 className="mb-2 font-bold">Plan history</h2>
+          <h2 className="mb-3 font-semibold tracking-tight">Plan history</h2>
           <ul className="text-sm">
             {data.history.map((p) => (
               <li key={p.id} className="flex justify-between border-t border-line py-2 first:border-0">
@@ -253,7 +253,7 @@ function WorkoutsTab({ clientId, unit, from, to, openId }: { clientId: string; u
         const sets = s.session_exercises.flatMap((e) => e.session_sets);
         const isOpen = open === s.id;
         return (
-          <li key={s.id} className="rounded-2xl border border-line bg-white">
+          <li key={s.id} className="rounded-2xl border border-line bg-surface">
             <button className="flex min-h-16 w-full items-center gap-3 px-4 py-3 text-left" onClick={() => setOpen(isOpen ? null : s.id)} aria-expanded={isOpen}>
               <div className="flex-1">
                 <p className="font-semibold">{s.name}</p>
@@ -313,14 +313,14 @@ function TargetsForm({ clientId, active }: { clientId: string; active: boolean }
   return (
     <Card>
       <form onSubmit={save} className="space-y-3" noValidate>
-        <h2 className="font-bold">Daily targets</h2>
+        <h2 className="font-semibold">Daily targets</h2>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           <Field label="Calories"><NumInput value={f.calories} onChange={set("calories")} disabled={!active} /></Field>
           <Field label="Protein (g)"><NumInput value={f.protein_g} onChange={set("protein_g")} disabled={!active} /></Field>
           <Field label="Carbs (g)"><NumInput value={f.carbs_g} onChange={set("carbs_g")} disabled={!active} /></Field>
           <Field label="Fat (g)"><NumInput value={f.fat_g} onChange={set("fat_g")} disabled={!active} /></Field>
         </div>
-        {msg && <p className={`text-sm ${msg.ok ? "text-brand-dark" : "text-red-700"}`} role="status">{msg.text}</p>}
+        {msg && <p className={`text-sm ${msg.ok ? "text-brand-dark" : "text-danger"}`} role="status">{msg.text}</p>}
         {active && <Button type="submit" loading={saving}>Save targets</Button>}
       </form>
     </Card>
@@ -361,11 +361,11 @@ function NotesTab({ clientId, active }: { clientId: string; active: boolean }) {
 
   return (
     <div className="space-y-3">
-      <p className="flex items-center gap-2 text-sm text-muted"><StickyNote className="size-4" /> Private — only you can see these notes.</p>
+      <p className="flex items-center gap-2 text-sm text-muted"><StickyNote className="size-4" /> Private. Only you can see these notes.</p>
       {active && (
         <form onSubmit={add} className="space-y-2" noValidate>
           <Textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder="Add a private note…" rows={3} />
-          {err && <p className="text-sm text-red-700">{err}</p>}
+          {err && <p className="text-sm text-danger">{err}</p>}
           <Button type="submit" loading={saving}>Add note</Button>
         </form>
       )}
@@ -374,12 +374,12 @@ function NotesTab({ clientId, active }: { clientId: string; active: boolean }) {
       ) : (
         <ul className="space-y-2">
           {data!.map((n) => (
-            <li key={n.id} className="flex gap-2 rounded-2xl border border-line bg-white p-3">
+            <li key={n.id} className="flex gap-2 rounded-2xl border border-line bg-surface p-3">
               <div className="flex-1">
                 <p className="whitespace-pre-wrap text-sm">{n.body}</p>
                 <p className="mt-1 text-xs text-muted">{fmtDateTime(n.created_at)}</p>
               </div>
-              <button className="flex size-10 items-center justify-center rounded-xl text-muted hover:bg-red-50 hover:text-red-700" onClick={() => remove(n.id)} aria-label="Delete note"><Trash2 className="size-4" /></button>
+              <button className="flex size-10 items-center justify-center rounded-xl text-muted hover:bg-danger-bg hover:text-danger" onClick={() => remove(n.id)} aria-label="Delete note"><Trash2 className="size-4" /></button>
             </li>
           ))}
         </ul>

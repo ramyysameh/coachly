@@ -9,6 +9,7 @@ import { getActivePlan, mealTotals, scheduledDay, type Meal, type Session, type 
 import { useProfile } from "@/components/AppShell";
 import { Button, Card, Empty, ErrorBox, Meter, PageHeader, Skeleton } from "@/components/ui";
 import { addDays, errMsg, fmtDate, fmtRest, localDate, WEEKDAYS } from "@/lib/utils";
+import { isUnreachable } from "@/lib/supabase/authState";
 
 function TodayInner() {
   const supabase = createClient();
@@ -69,26 +70,30 @@ function TodayInner() {
     const { data: sid, error } = await supabase.rpc("start_session", { p_plan_day: day.id, p_date: today });
     if (error) {
       setStarting(false);
-      return setStartError(errMsg(error));
+      return setStartError(
+        isUnreachable(error) || !navigator.onLine
+          ? "You're offline. Starting a new workout needs a connection, so try again once you have signal. Workouts you've already started can still be logged offline."
+          : errMsg(error),
+      );
     }
     router.push(`/training/session/${sid}`);
   }
 
   return (
-    <div className="space-y-4">
+    <div className="stagger space-y-4">
       <PageHeader
         title={`Hi, ${profile.full_name.split(" ")[0] || "there"}`}
         subtitle={fmtDate(today, { weekday: "long", month: "long", day: "numeric" })}
       />
 
       {justFinished && (
-        <p className="flex items-center gap-2 rounded-xl bg-brand/10 p-3 text-sm font-medium text-brand-dark" role="status">
+        <p className="flex items-center gap-2 rounded-2xl border border-brand/20 bg-brand/10 p-3 text-sm font-medium text-brand-dark" role="status">
           <CheckCircle2 className="size-5" /> Workout saved. Nice work!
         </p>
       )}
 
       {unfinished.map((s) => (
-        <Link key={s.id} href={`/training/session/${s.id}`} className="flex min-h-14 items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-amber-900">
+        <Link key={s.id} href={`/training/session/${s.id}`} className="flex min-h-14 items-center gap-3 rounded-2xl border border-warn-line bg-warn-bg p-3 text-warn transition-transform duration-150 active:scale-[0.99]">
           <RotateCw className="size-5 shrink-0" />
           <span className="flex-1 text-sm">
             <span className="font-semibold">Unfinished: {s.name}</span> from {fmtDate(s.scheduled_date)}
@@ -106,7 +111,7 @@ function TodayInner() {
         <Card className="flex items-start gap-3">
           <Coffee className="mt-0.5 size-6 text-muted" />
           <div>
-            <p className="font-bold">Rest day</p>
+            <p className="font-semibold">Rest day</p>
             <p className="text-sm text-muted">
               {data.plan.start_date && today < data.plan.start_date
                 ? `Your plan "${data.plan.name}" starts ${fmtDate(data.plan.start_date)}.`
@@ -115,25 +120,26 @@ function TodayInner() {
           </div>
         </Card>
       ) : (
-        <Card className="space-y-3 p-0">
-          <div className="p-4 pb-0">
-            <p className="text-xs font-semibold uppercase tracking-wide text-brand">Today&apos;s workout · {data.plan.name}</p>
-            <h2 className="mt-0.5 text-2xl font-bold">{day.name}</h2>
-            <p className="text-sm text-muted">
-              {day.plan_exercises.length} exercises · {day.plan_exercises.reduce((n, e) => n + e.target_sets, 0)} sets
+        <Card className="overflow-hidden p-0">
+          <div className="border-b border-line bg-[linear-gradient(180deg,color-mix(in_oklab,var(--color-brand)_8%,transparent),transparent)] p-5 pb-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-brand-dark">Today&apos;s workout</p>
+            <h2 className="mt-1 text-[28px] leading-tight font-semibold tracking-tight">{day.name}</h2>
+            <p className="mt-1 text-sm text-muted">
+              {data.plan.name} · {day.plan_exercises.length} exercises, {day.plan_exercises.reduce((n, e) => n + e.target_sets, 0)} sets
             </p>
           </div>
-          <ul className="divide-y divide-line border-y border-line">
-            {day.plan_exercises.map((pe) => (
-              <li key={pe.id} className="flex items-center justify-between gap-2 px-4 py-2.5 text-sm">
-                <span className="font-medium">{pe.exercises.name}</span>
-                <span className="shrink-0 text-muted tabular-nums">
-                  {pe.target_sets} × {pe.rep_min === pe.rep_max ? pe.rep_min : `${pe.rep_min}–${pe.rep_max}`} · {fmtRest(pe.rest_seconds)}
+          <ul className="divide-y divide-line">
+            {day.plan_exercises.map((pe, i) => (
+              <li key={pe.id} className="flex items-center gap-3 px-5 py-3 text-sm">
+                <span className="w-5 shrink-0 font-mono text-xs text-muted tabular-nums">{i + 1}</span>
+                <span className="flex-1 font-medium">{pe.exercises.name}</span>
+                <span className="shrink-0 font-mono text-xs text-muted tabular-nums">
+                  {pe.target_sets} × {pe.rep_min === pe.rep_max ? pe.rep_min : `${pe.rep_min}-${pe.rep_max}`} · {fmtRest(pe.rest_seconds)}
                 </span>
               </li>
             ))}
           </ul>
-          <div className="p-4 pt-1">
+          <div className="border-t border-line p-4">
             {startError && <div className="mb-2"><ErrorBox message={startError} /></div>}
             {todaySession?.status === "completed" ? (
               <div className="space-y-2">
@@ -155,9 +161,9 @@ function TodayInner() {
 
       {/* Nutrition */}
       <Link href="/nutrition" className="block">
-        <Card className="space-y-3 hover:border-brand/40">
+        <Card className="space-y-4 transition-[border-color,transform] duration-150 hover:border-brand/40 active:scale-[0.99]">
           <div className="flex items-center justify-between">
-            <h2 className="font-bold">Nutrition today</h2>
+            <h2 className="font-semibold tracking-tight">Nutrition today</h2>
             <ChevronRight className="size-5 text-muted" />
           </div>
           <Meter label="Calories" value={totals.calories} target={data.targets?.calories} unit="kcal" />
@@ -171,7 +177,7 @@ function TodayInner() {
       </Link>
 
       {data.plan && (
-        <p className="text-center text-xs text-muted">
+        <p className="px-4 text-center text-xs leading-relaxed text-muted">
           Schedule: {data.plan.plan_days.map((d) => `${d.name} (${d.weekdays.map((w) => WEEKDAYS[w - 1]).join("/") || "unscheduled"})`).join(" · ")}
         </p>
       )}

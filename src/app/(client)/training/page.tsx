@@ -44,14 +44,14 @@ export default function TrainingPage() {
         ) : (
           <div className="space-y-3">
             <Card>
-              <p className="text-lg font-bold">{data.plan.name}</p>
+              <p className="text-lg font-semibold">{data.plan.name}</p>
               {data.plan.description && <p className="text-sm text-muted">{data.plan.description}</p>}
               <p className="mt-1 text-xs text-muted">Started {fmtDate(data.plan.start_date!)}</p>
             </Card>
             {data.plan.plan_days.map((d) => (
               <Card key={d.id} className="p-0">
                 <div className="flex items-center justify-between border-b border-line px-4 py-3">
-                  <h2 className="font-bold">{d.name}</h2>
+                  <h2 className="font-semibold">{d.name}</h2>
                   <span className="text-xs font-semibold text-muted">{d.weekdays.map((w) => WEEKDAYS[w - 1]).join(" · ") || "Unscheduled"}</span>
                 </div>
                 <ul className="divide-y divide-line">
@@ -60,7 +60,7 @@ export default function TrainingPage() {
                       <div className="flex justify-between gap-2">
                         <span className="font-medium">{pe.exercises.name}</span>
                         <span className="shrink-0 tabular-nums text-muted">
-                          {pe.target_sets} × {pe.rep_min}–{pe.rep_max} · {fmtRest(pe.rest_seconds)}
+                          {pe.target_sets} × {pe.rep_min}-{pe.rep_max} · {fmtRest(pe.rest_seconds)}
                         </span>
                       </div>
                       {pe.notes && <p className="text-xs text-brand-dark">{pe.notes}</p>}
@@ -80,7 +80,7 @@ export default function TrainingPage() {
             const sets = s.session_exercises.flatMap((e) => e.session_sets);
             return (
               <li key={s.id}>
-                <Link href={`/training/session/${s.id}`} className="flex min-h-16 items-center gap-3 rounded-2xl border border-line bg-white px-4 py-3">
+                <Link href={`/training/session/${s.id}`} className="flex min-h-16 items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3">
                   <div className="flex-1">
                     <p className="font-semibold">{s.name}</p>
                     <p className="text-xs text-muted">{fmtDate(s.scheduled_date)} · {sets.filter((x) => x.completed).length}/{sets.length} sets</p>

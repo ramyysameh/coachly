@@ -16,7 +16,7 @@ export function toKg(value: number | null | undefined, unit: Unit): number | nul
 
 export function fmtWeight(kg: number | null | undefined, unit: Unit): string {
   const v = fromKg(kg, unit);
-  return v === null ? "—" : `${v} ${unit}`;
+  return v === null ? "-" : `${v} ${unit}`;
 }
 
 /** Local calendar date as YYYY-MM-DD (not UTC). */

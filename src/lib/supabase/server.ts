@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
+import { getAuthState, isUnreachable } from "./authState";
 
 /** Server Supabase client for Server Components and Route Handlers. Create one per request. */
 export async function createClient() {
@@ -8,6 +9,8 @@ export async function createClient() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      // Fail fast if the backend hangs, so pages show "reconnecting" instead of spinning forever.
+      global: { fetch: (input, init) => fetch(input, { ...init, signal: init?.signal ?? AbortSignal.timeout(4000) }) },
       cookies: {
         getAll() {
           return cookieStore.getAll();
@@ -33,12 +36,21 @@ export type Profile = {
   onboarded: boolean;
 };
 
-/** Current user's profile, or null when signed out. */
-export async function getProfile(): Promise<Profile | null> {
+export type ProfileResult =
+  | { status: "ok"; profile: Profile }
+  | { status: "signed-out" }
+  /** Auth server or database unreachable — don't treat this as a sign-out. */
+  | { status: "unavailable" };
+
+/** Current user's profile, distinguishing "signed out" from "backend unreachable". */
+export async function loadProfile(): Promise<ProfileResult> {
+  // The proxy already found the backend unreachable for this request: don't wait on it again.
+  // (A client faking this header only gets the "reconnecting" screen itself.)
+  if ((await headers()).get("x-coachly-auth") === "unavailable") return { status: "unavailable" };
   const supabase = await createClient();
-  const { data: claims } = await supabase.auth.getClaims();
-  const uid = claims?.claims?.sub;
-  if (!uid) return null;
-  const { data } = await supabase.from("profiles").select("*").eq("id", uid).single();
-  return (data as Profile) ?? null;
+  const auth = await getAuthState(supabase);
+  if (auth.kind !== "signed-in") return { status: auth.kind };
+  const { data, error } = await supabase.from("profiles").select("*").eq("id", auth.uid).maybeSingle();
+  if (error) return isUnreachable(error) ? { status: "unavailable" } : { status: "signed-out" };
+  return data ? { status: "ok", profile: data as Profile } : { status: "signed-out" };
 }

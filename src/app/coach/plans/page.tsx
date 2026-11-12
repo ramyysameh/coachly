@@ -67,7 +67,7 @@ export default function PlansPage() {
       <PageHeader title="Plan templates" subtitle="Reusable splits. Assign them to clients from the client's profile." />
       <Card>
         <form onSubmit={create} className="space-y-3" noValidate>
-          <h2 className="font-bold">New template</h2>
+          <h2 className="font-semibold">New template</h2>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Start from">
               <Select value={preset} onChange={(e) => setPreset(e.target.value)}>
@@ -89,20 +89,20 @@ export default function PlansPage() {
       ) : (
         <ul className="grid gap-3 md:grid-cols-2">
           {data!.map((r) => (
-            <li key={r.id} className="flex flex-col rounded-2xl border border-line bg-white">
-              <Link href={`/coach/plans/${r.id}`} className="flex flex-1 items-start gap-2 p-4 hover:bg-paper/60">
+            <li key={r.id} className="flex flex-col rounded-2xl border border-line bg-surface">
+              <Link href={`/coach/plans/${r.id}`} className="flex flex-1 items-start gap-2 p-4 hover:bg-surface-2/60">
                 <div className="flex-1">
-                  <p className="font-bold">{r.name}</p>
+                  <p className="font-semibold">{r.name}</p>
                   <p className="mt-1 text-sm text-muted">
                     {r.plan_days.length} days · {r.plan_days.reduce((n, d) => n + d.plan_exercises.length, 0)} exercises
                   </p>
-                  <p className="mt-1 text-xs text-muted">{r.plan_days.map((d) => `${d.name} (${d.weekdays.map((w) => WEEKDAYS[w - 1]).join("/") || "–"})`).join(" · ")}</p>
+                  <p className="mt-1 text-xs text-muted">{r.plan_days.map((d) => `${d.name} (${d.weekdays.map((w) => WEEKDAYS[w - 1]).join("/") || "-"})`).join(" · ")}</p>
                 </div>
                 <ChevronRight className="size-5 text-muted" />
               </Link>
               <div className="flex gap-1 border-t border-line p-2">
                 <Button size="sm" variant="ghost" onClick={() => duplicate(r)}><Copy className="size-4" /> Duplicate</Button>
-                <Button size="sm" variant="ghost" className="ml-auto text-red-700" onClick={() => remove(r)}><Trash2 className="size-4" /> Delete</Button>
+                <Button size="sm" variant="ghost" className="ml-auto text-danger" onClick={() => remove(r)}><Trash2 className="size-4" /> Delete</Button>
               </div>
             </li>
           ))}

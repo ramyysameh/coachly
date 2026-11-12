@@ -5,7 +5,9 @@ import { createClient } from "@/lib/supabase/client";
 import { useAsync, must } from "@/lib/useAsync";
 import { MEALS, mealTotals, type Meal, type Targets } from "@/lib/data";
 import { Button, Card, Empty, ErrorBox, Field, Input, Meter, NumInput, Select, Spinner } from "@/components/ui";
-import { addDays, errMsg, fmtDate, localDate } from "@/lib/utils";
+import { addDays, fmtDate, localDate } from "@/lib/utils";
+import { isUnreachable } from "@/lib/supabase/authState";
+import { flushPendingMeals, saveMealOp, withPendingMeals, type MealRow } from "@/lib/pendingMeals";
 
 /** One day of meals with totals vs targets. Clients can add/edit/delete; coaches view. */
 export default function NutritionDay({ clientId, editable }: { clientId: string; editable: boolean }) {
@@ -14,17 +16,34 @@ export default function NutritionDay({ clientId, editable }: { clientId: string;
   const [editing, setEditing] = useState<Partial<Meal> | null>(null);
 
   const { data, loading, error, reload } = useAsync(async () => {
+    if (editable) await flushPendingMeals(supabase);
     const [meals, targets] = await Promise.all([
       supabase.from("meal_entries").select("*").eq("client_id", clientId).eq("entry_date", date).order("created_at"),
       supabase.from("nutrition_targets").select("*").eq("client_id", clientId).maybeSingle(),
     ]);
-    return { meals: must(meals) as Meal[], targets: must(targets) as Targets | null };
+    // Offline with nothing cached: still show what was logged on this phone.
+    const offline = editable && (isUnreachable(meals.error) || isUnreachable(targets.error));
+    const loaded = offline && meals.error ? [] : (must(meals) as Meal[]);
+    const merged = editable ? withPendingMeals(loaded, clientId, date) : { meals: loaded, pendingIds: new Set<string>() };
+    return {
+      meals: merged.meals,
+      pendingIds: merged.pendingIds,
+      targets: offline && targets.error ? null : (must(targets) as Targets | null),
+      offline,
+    };
   }, [clientId, date]);
+
+  // Reload once queued changes have synced in the background.
+  useEffect(() => {
+    const onSynced = () => reload({ silent: true });
+    window.addEventListener("coachly:synced", onSynced);
+    return () => window.removeEventListener("coachly:synced", onSynced);
+  }, [reload]);
 
   async function remove(m: Meal) {
     if (!confirm(`Delete "${m.food_name}"?`)) return;
-    const { error } = await supabase.from("meal_entries").delete().eq("id", m.id);
-    if (error) alert(errMsg(error));
+    const res = await saveMealOp(supabase, { op: "delete", id: m.id, client_id: clientId, entry_date: m.entry_date });
+    if (res.error) alert(res.error);
     reload({ silent: true });
   }
 
@@ -33,15 +52,15 @@ export default function NutritionDay({ clientId, editable }: { clientId: string;
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-2 rounded-2xl border border-line bg-white p-1">
-        <button className="flex size-12 items-center justify-center rounded-xl hover:bg-paper" onClick={() => setDate(addDays(date, -1))} aria-label="Previous day">
+      <div className="flex items-center justify-between gap-2 rounded-2xl border border-line bg-surface p-1">
+        <button className="flex size-12 items-center justify-center rounded-xl hover:bg-surface-2" onClick={() => setDate(addDays(date, -1))} aria-label="Previous day">
           <ChevronLeft className="size-5" />
         </button>
         <label className="flex flex-1 flex-col items-center">
           <span className="font-semibold">{isToday ? "Today" : fmtDate(date)}</span>
           <input type="date" value={date} max={localDate()} onChange={(e) => e.target.value && setDate(e.target.value)} className="text-xs text-muted" aria-label="Pick a date" />
         </label>
-        <button className="flex size-12 items-center justify-center rounded-xl hover:bg-paper disabled:opacity-30" onClick={() => setDate(addDays(date, 1))} disabled={isToday} aria-label="Next day">
+        <button className="flex size-12 items-center justify-center rounded-xl hover:bg-surface-2 disabled:opacity-30" onClick={() => setDate(addDays(date, 1))} disabled={isToday} aria-label="Next day">
           <ChevronRight className="size-5" />
         </button>
       </div>
@@ -59,12 +78,13 @@ export default function NutritionDay({ clientId, editable }: { clientId: string;
               <Meter label="Carbs" value={totals.carbs_g} target={data.targets?.carbs_g} unit="g" />
               <Meter label="Fat" value={totals.fat_g} target={data.targets?.fat_g} unit="g" />
             </div>
-            {!data.targets && <p className="text-xs text-muted">No targets set by the coach yet.</p>}
+            {!data.targets && !data.offline && <p className="text-xs text-muted">No targets set by the coach yet.</p>}
+            {data.offline && <p className="text-xs font-medium text-warn">Offline. Showing what&apos;s saved on this phone. Changes sync when you reconnect.</p>}
           </Card>
 
           {data.meals.length === 0 && (
             <Empty icon={<Salad className="size-8" />} title="No meals logged">
-              {editable ? "Add what you ate — food, serving, calories and macros." : "Nothing logged for this day."}
+              {editable ? "Add what you ate: food, serving, calories and macros." : "Nothing logged for this day."}
             </Empty>
           )}
 
@@ -73,9 +93,9 @@ export default function NutritionDay({ clientId, editable }: { clientId: string;
             if (!items.length && !editable) return null;
             const t = mealTotals(items);
             return (
-              <section key={meal} className="rounded-2xl border border-line bg-white">
+              <section key={meal} className="rounded-2xl border border-line bg-surface">
                 <div className="flex items-center justify-between px-4 py-2.5">
-                  <h3 className="font-bold capitalize">{meal}</h3>
+                  <h3 className="font-semibold capitalize">{meal}</h3>
                   <span className="text-xs text-muted tabular-nums">{Math.round(t.calories)} kcal</span>
                 </div>
                 {items.length > 0 && (
@@ -83,17 +103,20 @@ export default function NutritionDay({ clientId, editable }: { clientId: string;
                     {items.map((m) => (
                       <li key={m.id} className="flex items-center gap-2 px-4 py-2">
                         <div className="min-w-0 flex-1">
-                          <p className="truncate font-medium">{m.food_name}</p>
+                          <p className="truncate font-medium">
+                            {m.food_name}
+                            {data.pendingIds.has(m.id) && <span className="ml-2 rounded-full bg-warn-bg px-2 py-0.5 text-[11px] font-semibold text-warn">Not synced</span>}
+                          </p>
                           <p className="text-xs text-muted tabular-nums">
                             {m.serving} · {Math.round(m.calories)} kcal · P {Number(m.protein_g)} · C {Number(m.carbs_g)} · F {Number(m.fat_g)}
                           </p>
                         </div>
                         {editable && (
                           <>
-                            <button className="flex size-11 items-center justify-center rounded-xl text-muted hover:bg-paper" onClick={() => setEditing(m)} aria-label={`Edit ${m.food_name}`}>
+                            <button className="flex size-11 items-center justify-center rounded-xl text-muted hover:bg-surface-2" onClick={() => setEditing(m)} aria-label={`Edit ${m.food_name}`}>
                               <Pencil className="size-4" />
                             </button>
-                            <button className="flex size-11 items-center justify-center rounded-xl text-red-700 hover:bg-red-50" onClick={() => remove(m)} aria-label={`Delete ${m.food_name}`}>
+                            <button className="flex size-11 items-center justify-center rounded-xl text-danger hover:bg-danger-bg" onClick={() => remove(m)} aria-label={`Delete ${m.food_name}`}>
                               <Trash2 className="size-4" />
                             </button>
                           </>
@@ -175,30 +198,34 @@ function MealForm({ clientId, initial, onClose, onSaved }: { clientId: string; i
       carbs_g: num(f.carbs_g),
       fat_g: num(f.fat_g),
     };
-    const res = initial.id
-      ? await supabase.from("meal_entries").update(row).eq("id", initial.id)
-      : await supabase.from("meal_entries").insert({ ...row, client_id: clientId, entry_date: initial.entry_date ?? localDate() });
+    const full: MealRow = {
+      ...row,
+      id: initial.id ?? crypto.randomUUID(),
+      client_id: clientId,
+      entry_date: initial.entry_date ?? localDate(),
+    };
+    const res = await saveMealOp(supabase, { op: "upsert", row: full });
     setSaving(false);
-    if (res.error) return setError(errMsg(res.error));
+    if (res.error) return setError(res.error);
     onSaved();
   }
 
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setF({ ...f, [k]: e.target.value });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 md:items-center" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex animate-fade items-end justify-center bg-slate-950/50 backdrop-blur-[2px] md:items-center" onClick={onClose}>
       <form
         onSubmit={save}
         noValidate
         onClick={(e) => e.stopPropagation()}
-        className="max-h-[92dvh] w-full max-w-md space-y-3 overflow-y-auto rounded-t-3xl bg-white p-5 md:rounded-3xl"
+        className="max-h-[92dvh] w-full max-w-md animate-sheet space-y-3 overflow-y-auto rounded-t-3xl border border-line bg-surface p-5 shadow-2xl md:rounded-3xl"
         style={{ paddingBottom: "calc(1.25rem + env(safe-area-inset-bottom))" }}
         role="dialog"
         aria-label={initial.id ? "Edit food" : "Add food"}
       >
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold">{initial.id ? "Edit food" : "Add food"}</h2>
-          <button type="button" onClick={onClose} className="flex size-11 items-center justify-center rounded-xl hover:bg-paper" aria-label="Close"><X className="size-5" /></button>
+          <h2 className="text-lg font-semibold">{initial.id ? "Edit food" : "Add food"}</h2>
+          <button type="button" onClick={onClose} className="flex size-11 items-center justify-center rounded-xl hover:bg-surface-2" aria-label="Close"><X className="size-5" /></button>
         </div>
         {error && <ErrorBox message={error} />}
         <Field label="Meal">

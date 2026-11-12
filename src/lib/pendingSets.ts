@@ -42,12 +42,21 @@ export function clearSetPatch(setId: string, sent: Patch) {
   }
 }
 
-/** Sends any queued edits for a session. Returns how many could not be sent. */
-export async function flushPendingSets(supabase: SupabaseClient, sessionId: string) {
+/** Queued edits for one session, keyed by set id (to overlay on data loaded from cache). */
+export function pendingPatchesFor(sessionId: string): Record<string, Patch> {
+  return Object.fromEntries(Object.entries(read()).filter(([, e]) => e.sessionId === sessionId).map(([id, e]) => [id, e.patch]));
+}
+
+export function pendingSetCount() {
+  return Object.keys(read()).length;
+}
+
+/** Sends queued edits — for one session, or all when no id is given. Returns how many could not be sent. */
+export async function flushPendingSets(supabase: SupabaseClient, sessionId?: string) {
   const all = read();
   let failed = 0;
   for (const [setId, e] of Object.entries(all)) {
-    if (e.sessionId !== sessionId) continue;
+    if (sessionId && e.sessionId !== sessionId) continue;
     const { error } = await supabase.from("session_sets").update(e.patch).eq("id", setId);
     if (error) failed++;
     else clearSetPatch(setId, e.patch);

@@ -47,7 +47,7 @@ export default function InvitePage({ params }: { params: Promise<{ token: string
     <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-5 py-10">
       <div className="mb-8 flex items-center gap-2 text-brand">
         <Dumbbell className="size-7" aria-hidden />
-        <span className="text-2xl font-bold tracking-tight text-ink">Coachly</span>
+        <span className="text-2xl font-semibold tracking-tight text-ink">Coachly</span>
       </div>
       {loading ? (
         <Spinner />
@@ -70,7 +70,7 @@ export default function InvitePage({ params }: { params: Promise<{ token: string
         <Card className="space-y-4">
           <UserCheck className="size-10 text-brand" aria-hidden />
           <div>
-            <h1 className="text-xl font-bold">{data.invite.coach_name} invited you</h1>
+            <h1 className="text-xl font-semibold">{data.invite.coach_name} invited you</h1>
             <p className="mt-1 text-sm text-muted">
               Accept to connect with your coach. They&apos;ll be able to assign training plans, set nutrition targets, review your logs and message you.
             </p>

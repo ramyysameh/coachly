@@ -35,11 +35,11 @@ export default function ClientsPage() {
         (["active", "archived"] as const).map((g) =>
           groups[g].length ? (
             <section key={g}>
-              <h2 className="mb-2 text-sm font-bold uppercase tracking-wide text-muted">{g} ({groups[g].length})</h2>
+              <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">{g} ({groups[g].length})</h2>
               <ul className="space-y-2">
                 {groups[g].map((r) => (
                   <li key={r.client_id}>
-                    <Link href={`/coach/clients/${r.client_id}`} className="flex min-h-16 items-center gap-3 rounded-2xl border border-line bg-white px-4 py-3 hover:border-brand/40">
+                    <Link href={`/coach/clients/${r.client_id}`} className="flex min-h-16 items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3 hover:border-brand/40">
                       <Avatar name={r.profiles.full_name} />
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-semibold">{r.profiles.full_name}</p>

@@ -9,7 +9,7 @@ import { SESSION_SELECT, sortSession, type Session, type SessionExercise, type S
 import { useProfile } from "@/components/AppShell";
 import { Badge, Button, ErrorBox, Spinner, Textarea } from "@/components/ui";
 import { cn, errMsg, fmtDate, fmtRest, fromKg, toKg, type Unit } from "@/lib/utils";
-import { clearSetPatch, flushPendingSets, queueSetPatch } from "@/lib/pendingSets";
+import { clearSetPatch, flushPendingSets, pendingPatchesFor, queueSetPatch } from "@/lib/pendingSets";
 
 type Prev = { exercise_id: string; performed_on: string; set_number: number; reps: number | null; weight_kg: number | null };
 
@@ -32,8 +32,12 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
     ]);
     const session = sortSession(must(s) as Session | null);
     if (!session) throw new Error("Workout not found");
+    // Show edits made on this phone that haven't reached the server yet.
+    const pending = pendingPatchesFor(id);
+    session.session_exercises?.forEach((e) => e.session_sets.forEach((st) => Object.assign(st, pending[st.id] ?? {})));
+    // "Last time" numbers are nice to have — offline the workout still opens without them.
     const prevBy: Record<string, Prev[]> = {};
-    for (const p of (must(prev) as Prev[]) ?? []) (prevBy[p.exercise_id] ??= []).push(p);
+    for (const p of prev.error ? [] : ((prev.data as Prev[]) ?? [])) (prevBy[p.exercise_id] ??= []).push(p);
     return { session, prevBy };
   }, [id]);
 
@@ -79,7 +83,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
           <ChevronLeft className="size-6" />
         </Link>
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-xl font-bold">{session.name}</h1>
+          <h1 className="truncate text-xl font-semibold">{session.name}</h1>
           <p className="text-xs text-muted">
             {fmtDate(session.scheduled_date)} · {doneSets}/{allSets.length} sets
           </p>
@@ -93,7 +97,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
 
       {completed && (
         <p className="rounded-xl bg-brand/10 p-3 text-sm text-brand-dark">
-          This workout is complete. You can still correct any set — changes save automatically.
+          This workout is complete. You can still correct any set. Changes save automatically.
         </p>
       )}
 
@@ -131,7 +135,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
       ) : (
         <Button size="lg" variant="secondary" className="w-full" onClick={() => router.push("/today")}>Done</Button>
       )}
-      <p className="pb-4 text-center text-xs text-muted">Progress saves as you go — you can close the app and resume any time.</p>
+      <p className="pb-4 text-center text-xs text-muted">Progress saves as you go. You can close the app and resume any time.</p>
 
       {rest && <RestTimer rest={rest} onClose={() => setRest(null)} />}
     </div>
@@ -185,15 +189,15 @@ function ExerciseCard({
     if (error) setError(errMsg(error));
   }
 
-  const lastTime = prev?.length ? prev.map((p) => `${p.weight_kg != null ? fromKg(p.weight_kg, unit) : "BW"}×${p.reps ?? "–"}`).join(", ") : null;
+  const lastTime = prev?.length ? prev.map((p) => `${p.weight_kg != null ? fromKg(p.weight_kg, unit) : "BW"}×${p.reps ?? "-"}`).join(", ") : null;
 
   return (
-    <section className="rounded-2xl border border-line bg-white" aria-label={ex.exercise_name}>
+    <section className="rounded-2xl border border-line bg-surface" aria-label={ex.exercise_name}>
       <div className="border-b border-line px-3 py-2.5">
         <div className="flex items-start justify-between gap-2">
-          <h2 className="font-bold leading-tight">{ex.exercise_name}</h2>
+          <h2 className="font-semibold leading-tight">{ex.exercise_name}</h2>
           <span className="shrink-0 text-xs font-semibold text-muted">
-            {ex.target_sets} × {ex.rep_min === ex.rep_max ? ex.rep_min : `${ex.rep_min}–${ex.rep_max}`} · rest {fmtRest(ex.rest_seconds)}
+            {ex.target_sets} × {ex.rep_min === ex.rep_max ? ex.rep_min : `${ex.rep_min}-${ex.rep_max}`} · rest {fmtRest(ex.rest_seconds)}
           </span>
         </div>
         {ex.coach_notes && <p className="mt-0.5 text-xs text-brand-dark">Coach: {ex.coach_notes}</p>}
@@ -233,7 +237,7 @@ function ExerciseCard({
       <div className="px-3 pb-3">
         <Textarea placeholder="Notes for this exercise (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} onBlur={saveNotes} rows={1} className="min-h-11 text-sm" />
       </div>
-      {error && <p className="px-3 pb-3 text-sm text-red-700" role="alert">{error}</p>}
+      {error && <p className="px-3 pb-3 text-sm text-danger" role="alert">{error}</p>}
     </section>
   );
 }
@@ -270,7 +274,7 @@ function SetRow({
     if (error) {
       setState("error");
       // the edit stays queued on this device and is re-sent when the workout reopens
-      setErr(`Not synced yet (${errMsg(error)}) — kept on this phone`);
+      setErr(`Not synced yet (${errMsg(error)}). Kept on this phone.`);
       return false;
     }
     clearSetPatch(set.id, patch);
@@ -307,19 +311,19 @@ function SetRow({
     if (ok) onCompleted();
   }
 
-  const prevLabel = prev ? `${prev.weight_kg != null ? fromKg(prev.weight_kg, unit) : "BW"}×${prev.reps ?? "–"}` : "—";
+  const prevLabel = prev ? `${prev.weight_kg != null ? fromKg(prev.weight_kg, unit) : "BW"}×${prev.reps ?? "-"}` : "-";
 
   return (
     <div className={cn("rounded-xl", set.completed && "bg-brand/5")}>
       <div className="grid grid-cols-[2rem_4.5rem_1fr_1fr_3.25rem] items-center gap-1.5 px-1 py-1">
-        <span className="text-center font-bold text-muted">{set.set_number}</span>
+        <span className="text-center font-semibold text-muted">{set.set_number}</span>
         <span className="truncate text-xs tabular-nums text-muted" title="Last time">{prevLabel}</span>
         <input
           aria-label={`Set ${set.set_number} weight in ${unit}`}
           inputMode="decimal"
           autoComplete="off"
           enterKeyHint="next"
-          className="h-12 w-full rounded-lg border border-line bg-white text-center text-lg font-semibold tabular-nums placeholder:font-normal placeholder:text-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+          className="h-12 w-full rounded-xl border border-line bg-surface text-center font-mono text-lg font-semibold tabular-nums transition-[border-color,box-shadow] duration-150 placeholder:font-normal placeholder:text-muted focus:border-brand focus:outline-none focus:ring-4 focus:ring-brand/15"
           placeholder={bodyweight ? "BW" : suggestW != null ? String(fromKg(suggestW, unit)) : unit}
           value={weight}
           onChange={(e) => setWeight(e.target.value.replace(/[^0-9.,]/g, ""))}
@@ -330,7 +334,7 @@ function SetRow({
           inputMode="numeric"
           autoComplete="off"
           enterKeyHint="done"
-          className="h-12 w-full rounded-lg border border-line bg-white text-center text-lg font-semibold tabular-nums placeholder:font-normal placeholder:text-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+          className="h-12 w-full rounded-xl border border-line bg-surface text-center font-mono text-lg font-semibold tabular-nums transition-[border-color,box-shadow] duration-150 placeholder:font-normal placeholder:text-muted focus:border-brand focus:outline-none focus:ring-4 focus:ring-brand/15"
           placeholder={suggestR != null ? String(suggestR) : String(repTarget)}
           value={reps}
           onChange={(e) => setReps(e.target.value.replace(/[^0-9]/g, ""))}
@@ -342,8 +346,8 @@ function SetRow({
           aria-pressed={set.completed}
           aria-busy={state === "saving"}
           className={cn(
-            "flex h-12 w-full items-center justify-center rounded-lg border-2 transition-colors",
-            set.completed ? "border-brand bg-brand text-white" : "border-line bg-white text-muted",
+            "flex h-12 w-full items-center justify-center rounded-xl border-2 transition-[background-color,border-color,color,transform] duration-150 active:scale-95",
+            set.completed ? "border-brand bg-brand text-brand-fg shadow-raised" : "border-line bg-surface text-muted hover:border-muted/40",
             state === "saving" && "opacity-60",
           )}
         >
@@ -351,7 +355,7 @@ function SetRow({
         </button>
       </div>
       {state === "error" && (
-        <p className="flex items-center gap-2 px-2 pb-1 text-xs font-medium text-red-700" role="alert">
+        <p className="flex items-center gap-2 px-2 pb-1 text-xs font-medium text-danger" role="alert">
           {err ?? "Couldn't save"}
           {err !== "Enter reps first" && (
             <button className="underline" onClick={() => save(valueFromInputs())}>Retry</button>
@@ -372,7 +376,7 @@ function SessionNotes({ session }: { session: Session }) {
     setSaved(!error);
   }
   return (
-    <div className="rounded-2xl border border-line bg-white p-3">
+    <div className="rounded-2xl border border-line bg-surface p-4 shadow-card">
       <label className="text-sm font-semibold" htmlFor="session-notes">Workout notes</label>
       <Textarea id="session-notes" className="mt-1 text-sm" rows={2} placeholder="How did it feel? Anything for your coach?" value={notes}
         onChange={(e) => { setNotes(e.target.value); setSaved(false); }} onBlur={save} />
@@ -396,16 +400,22 @@ function RestTimer({ rest, onClose }: { rest: { until: number; total: number }; 
     }
   }, [left, onClose]);
   return (
-    <div className="fixed inset-x-3 z-40 flex items-center gap-3 rounded-2xl bg-ink p-3 text-white shadow-lg md:left-auto md:right-8 md:w-80"
+    <div className="fixed inset-x-3 z-40 flex animate-enter items-center gap-3 overflow-hidden rounded-2xl bg-ink p-3 pl-4 text-paper shadow-[0_16px_40px_-12px_rgb(2_6_23/0.5)] md:left-auto md:right-8 md:w-80"
       style={{ bottom: "calc(4.75rem + env(safe-area-inset-bottom))" }} role="timer" aria-live="polite">
       <Timer className="size-6 shrink-0" aria-hidden />
       <div className="flex-1">
-        <p className="text-xs text-white/70">{left === 0 ? "Rest done — next set!" : "Rest"}</p>
-        <p className="text-2xl font-bold tabular-nums">{Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")}</p>
+        <p className="text-xs text-paper/70">{left === 0 ? "Rest done. Next set!" : "Rest"}</p>
+        <p className="font-mono text-2xl font-semibold tabular-nums">{Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")}</p>
       </div>
-      <button onClick={onClose} className="flex size-11 items-center justify-center rounded-xl bg-white/10" aria-label="Dismiss rest timer">
+      <button onClick={onClose} className="flex size-11 items-center justify-center rounded-xl bg-paper/10 transition-colors hover:bg-paper/20 active:scale-95" aria-label="Dismiss rest timer">
         <X className="size-5" />
       </button>
+      {/* remaining-rest bar */}
+      <span
+        aria-hidden
+        className="absolute inset-x-0 bottom-0 h-1 origin-left bg-brand transition-transform duration-300 ease-linear"
+        style={{ transform: `scaleX(${rest.total ? left / rest.total : 0})` }}
+      />
     </div>
   );
 }

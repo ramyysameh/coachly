@@ -13,7 +13,7 @@ export default function SessionDetail({ session, unit }: { session: Session; uni
           <div className="flex flex-wrap items-baseline justify-between gap-x-2 border-b border-line px-3 py-2">
             <p className="font-semibold">{ex.exercise_name}</p>
             <p className="text-xs text-muted">
-              Target {ex.target_sets} × {ex.rep_min}–{ex.rep_max}
+              Target {ex.target_sets} × {ex.rep_min}-{ex.rep_max}
             </p>
           </div>
           <table className="w-full text-sm">
@@ -29,8 +29,8 @@ export default function SessionDetail({ session, unit }: { session: Session; uni
               {ex.session_sets.map((s) => (
                 <tr key={s.id} className="border-t border-line/60 tabular-nums">
                   <td className="px-3 py-1.5">{s.set_number}</td>
-                  <td className="px-3 py-1.5">{s.weight_kg != null ? fmtWeight(s.weight_kg, unit) : ex.is_bodyweight ? "Bodyweight" : "—"}</td>
-                  <td className="px-3 py-1.5">{s.reps ?? "—"}</td>
+                  <td className="px-3 py-1.5">{s.weight_kg != null ? fmtWeight(s.weight_kg, unit) : ex.is_bodyweight ? "Bodyweight" : "-"}</td>
+                  <td className="px-3 py-1.5">{s.reps ?? "-"}</td>
                   <td className="px-3 py-1.5">{s.completed ? <span className="text-brand-dark">✓ Done</span> : <span className="text-muted">Not done</span>}</td>
                 </tr>
               ))}

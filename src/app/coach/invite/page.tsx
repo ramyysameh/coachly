@@ -95,7 +95,7 @@ export default function InvitePage() {
       </Card>
 
       <section>
-        <h2 className="mb-2 font-bold">Your invite links</h2>
+        <h2 className="mb-3 font-semibold tracking-tight">Your invite links</h2>
         {loading ? <Spinner /> : loadError ? <ErrorBox message={loadError} onRetry={reload} /> : data!.length === 0 ? (
           <Empty icon={<Link2 className="size-8" />} title="No invites yet" />
         ) : (
@@ -103,7 +103,7 @@ export default function InvitePage() {
             {data!.map((i) => {
               const s = status(i);
               return (
-                <li key={i.id} className="rounded-2xl border border-line bg-white p-3">
+                <li key={i.id} className="rounded-2xl border border-line bg-surface p-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="flex-1 font-semibold">{i.note || "Invite link"}</p>
                     <Badge tone={s.tone}>{s.label}</Badge>

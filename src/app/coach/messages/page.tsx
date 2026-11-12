@@ -32,10 +32,10 @@ function MessagesInner() {
   const current = data?.find((c) => c.client_id === selected);
 
   return (
-    <div className="-mx-4 -mt-4 flex overflow-hidden bg-white md:mx-0 md:mt-0 md:rounded-2xl md:border md:border-line"
+    <div className="-mx-4 -mt-4 flex overflow-hidden bg-surface md:mx-0 md:mt-0 md:rounded-2xl md:border md:border-line"
       style={{ height: "calc(100dvh - 3.5rem - 4rem - env(safe-area-inset-bottom))" }}>
       <aside className={cn("w-full shrink-0 overflow-y-auto border-r border-line md:block md:w-72", current && "hidden")}>
-        <h1 className="border-b border-line px-4 py-3 text-lg font-bold">Messages</h1>
+        <h1 className="border-b border-line px-4 py-3 text-lg font-semibold">Messages</h1>
         {loading && !data ? <Spinner /> : error ? <div className="p-3"><ErrorBox message={error} onRetry={reload} /></div> : data!.length === 0 ? (
           <div className="p-3"><Empty icon={<MessageCircle className="size-8" />} title="No conversations">Conversations start when a client accepts your invite.</Empty></div>
         ) : (
@@ -44,7 +44,7 @@ function MessagesInner() {
               <li key={c.id}>
                 <button
                   onClick={() => router.replace(`/coach/messages?client=${c.client_id}`)}
-                  className={cn("flex min-h-16 w-full items-center gap-3 border-b border-line px-4 py-2 text-left hover:bg-paper", c.client_id === selected && "bg-brand/5")}
+                  className={cn("flex min-h-16 w-full items-center gap-3 border-b border-line px-4 py-2 text-left hover:bg-surface-2", c.client_id === selected && "bg-brand/5")}
                 >
                   <Avatar name={c.client.full_name} />
                   <span className="min-w-0 flex-1">
@@ -61,7 +61,7 @@ function MessagesInner() {
       <section className={cn("min-w-0 flex-1 flex-col bg-paper", current ? "flex" : "hidden md:flex")}>
         {current ? (
           <>
-            <button onClick={() => router.replace("/coach/messages")} className="flex min-h-10 items-center gap-1 border-b border-line bg-white px-3 text-sm font-semibold text-muted md:hidden">
+            <button onClick={() => router.replace("/coach/messages")} className="flex min-h-10 items-center gap-1 border-b border-line bg-surface px-3 text-sm font-semibold text-muted md:hidden">
               <ChevronLeft className="size-4" /> All conversations
             </button>
             <div className="min-h-0 flex-1">

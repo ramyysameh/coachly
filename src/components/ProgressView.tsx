@@ -44,9 +44,9 @@ export default function ProgressView({ clientId, unit, canLogWeight, from, to }:
       <div className="grid grid-cols-3 gap-2">
         <Stat label="Completed" value={String(data.completed)} />
         <Stat label="Missed" value={String(data.missed)} />
-        <Stat label="Completion" value={rate === null ? "—" : `${rate}%`} />
+        <Stat label="Completion" value={rate === null ? "-" : `${rate}%`} />
       </div>
-      <p className="-mt-2 text-xs text-muted">{fmtDate(rangeFrom)} – {fmtDate(rangeTo)}</p>
+      <p className="-mt-2 text-xs text-muted">{fmtDate(rangeFrom)} to {fmtDate(rangeTo)}</p>
 
       <ExerciseProgress clientId={clientId} unit={unit} logged={data.logged} from={from} to={to} />
       <BodyWeight clientId={clientId} unit={unit} entries={data.bw} canLog={canLogWeight} onSaved={() => reload({ silent: true })} from={from} to={to} />
@@ -56,8 +56,8 @@ export default function ProgressView({ clientId, unit, canLogWeight, from, to }:
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border border-line bg-white p-3 text-center">
-      <p className="text-2xl font-bold tabular-nums">{value}</p>
+    <div className="rounded-2xl border border-line bg-surface p-3 text-center">
+      <p className="text-2xl font-semibold tabular-nums">{value}</p>
       <p className="text-xs font-medium text-muted">{label}</p>
     </div>
   );
@@ -80,7 +80,7 @@ function ExerciseProgress({ clientId, unit, logged, from, to }: { clientId: stri
     <Card className="space-y-3">
       <div className="flex items-center gap-2">
         <BarChart3 className="size-5 text-brand" />
-        <h2 className="font-bold">Exercise progress</h2>
+        <h2 className="font-semibold">Exercise progress</h2>
       </div>
       {logged.length === 0 ? (
         <Empty title="No exercises logged yet">Complete a workout to see weight and reps over time.</Empty>
@@ -96,10 +96,10 @@ function ExerciseProgress({ clientId, unit, logged, from, to }: { clientId: stri
               data={rows}
               series={
                 ex?.is_bodyweight && rows.every((r) => r.weight == null)
-                  ? [{ key: "reps", label: "Best reps", color: "#0f766e" }]
+                  ? [{ key: "reps", label: "Best reps", color: "var(--color-brand)" }]
                   : [
-                      { key: "weight", label: `Top weight (${unit})`, color: "#0f766e" },
-                      { key: "reps", label: "Best reps", color: "#f59e0b", axis: "right" },
+                      { key: "weight", label: `Top weight (${unit})`, color: "var(--color-brand)" },
+                      { key: "reps", label: "Best reps", color: "var(--color-warn-solid)", axis: "right" },
                     ]
               }
             />
@@ -138,11 +138,11 @@ function BodyWeight({ clientId, unit, entries, canLog, onSaved, from, to }: { cl
     <Card className="space-y-3">
       <div className="flex items-center gap-2">
         <Scale className="size-5 text-brand" />
-        <h2 className="flex-1 font-bold">Body weight</h2>
+        <h2 className="flex-1 font-semibold">Body weight</h2>
         {latest && <span className="text-sm font-semibold tabular-nums">{fromKg(latest.weight_kg, unit)} {unit}</span>}
       </div>
       {rows.length > 1 ? (
-        <TrendChart data={rows} series={[{ key: "weight", label: `Body weight (${unit})`, color: "#0f766e" }]} height={180} />
+        <TrendChart data={rows} series={[{ key: "weight", label: `Body weight (${unit})`, color: "var(--color-brand)" }]} height={180} />
       ) : (
         <p className="text-sm text-muted">{rows.length === 1 ? "Log one more entry to see a trend." : "No body-weight entries yet (optional)."}</p>
       )}
@@ -152,7 +152,7 @@ function BodyWeight({ clientId, unit, entries, canLog, onSaved, from, to }: { cl
           <Button type="submit" loading={saving}>Log</Button>
         </form>
       )}
-      {error && <p className="text-sm text-red-700" role="alert">{error}</p>}
+      {error && <p className="text-sm text-danger" role="alert">{error}</p>}
     </Card>
   );
 }

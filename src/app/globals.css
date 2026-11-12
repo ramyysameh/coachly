@@ -1,13 +1,80 @@
 @import "tailwindcss";
 
+/*
+ * Design tokens. Utilities read these as CSS variables, so the dark block
+ * below re-themes the whole app without per-component `dark:` classes.
+ */
 @theme {
   --color-brand: #0f766e;
   --color-brand-dark: #115e59;
+  --color-brand-fg: #ffffff; /* text on a brand fill */
   --color-ink: #0f172a;
-  --color-muted: #64748b;
+  --color-muted: #5b6b80;
   --color-line: #e2e8f0;
-  --color-paper: #f8fafc;
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --color-paper: #f6f8fa;
+  --color-surface: #ffffff;
+  --color-surface-2: #f1f5f9;
+
+  --color-danger: #b91c1c;
+  --color-danger-bg: #fef2f2;
+  --color-danger-line: #fecaca;
+  --color-warn: #92400e;
+  --color-warn-bg: #fffbeb;
+  --color-warn-line: #fde68a;
+  --color-warn-solid: #f59e0b;
+
+  --font-sans: var(--font-geist), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", Menlo, monospace;
+
+  --shadow-card: 0 1px 2px rgb(15 23 42 / 0.04), 0 1px 1px rgb(15 23 42 / 0.03);
+  --shadow-raised: 0 8px 24px -12px rgb(15 118 110 / 0.35);
+
+  --ease-out-quart: cubic-bezier(0.16, 1, 0.3, 1);
+
+  --animate-enter: enter 360ms var(--ease-out-quart) both;
+  --animate-sheet: sheet 320ms var(--ease-out-quart) both;
+  --animate-fade: fade 200ms ease-out both;
+  @keyframes sheet {
+    from { opacity: 0; transform: translateY(24px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes enter {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: none; }
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-brand: #2dd4bf;
+    --color-brand-dark: #5eead4;
+    --color-brand-fg: #042f2c;
+    --color-ink: #e6edf3;
+    --color-muted: #94a3b8;
+    --color-line: #233041;
+    --color-paper: #0b1118;
+    --color-surface: #111a24;
+    --color-surface-2: #172230;
+
+    --color-danger: #fca5a5;
+    --color-danger-bg: #2a1215;
+    --color-danger-line: #5b1d22;
+    --color-warn: #fcd34d;
+    --color-warn-bg: #261d0b;
+    --color-warn-line: #574214;
+    --color-warn-solid: #f59e0b;
+
+    --shadow-card: 0 0 0 transparent;
+    --shadow-raised: 0 8px 24px -12px rgb(45 212 191 / 0.25);
+  }
+}
+
+:root {
+  color-scheme: light dark;
 }
 
 html {
@@ -17,9 +84,38 @@ html {
 body {
   background: var(--color-paper);
   color: var(--color-ink);
+  font-feature-settings: "ss01", "cv11";
+  text-rendering: optimizeLegibility;
+}
+
+/* Consistent keyboard focus everywhere; mouse/touch clicks stay clean. */
+:where(a, button, [role="tab"], summary):focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+  border-radius: 0.75rem;
 }
 
 /* keep content clear of the bottom nav + iOS home indicator */
 .pb-nav {
   padding-bottom: calc(5.5rem + env(safe-area-inset-bottom));
+}
+
+/* Stagger helper: children of .stagger fade up in sequence on mount. */
+.stagger > * {
+  animation: var(--animate-enter);
+}
+.stagger > *:nth-child(2) { animation-delay: 40ms; }
+.stagger > *:nth-child(3) { animation-delay: 80ms; }
+.stagger > *:nth-child(4) { animation-delay: 120ms; }
+.stagger > *:nth-child(5) { animation-delay: 160ms; }
+.stagger > *:nth-child(n + 6) { animation-delay: 200ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

@@ -45,11 +45,11 @@ function SignupForm() {
     router.refresh();
   }
 
-  if (info) return <p className="rounded-2xl border border-line bg-white p-4">{info}</p>;
+  if (info) return <p className="rounded-2xl border border-line bg-surface p-4">{info}</p>;
 
   return (
     <form onSubmit={submit} className="space-y-4" noValidate>
-      <h1 className="text-xl font-bold">Create your account</h1>
+      <div><h1 className="text-2xl font-semibold tracking-tight">Create your account</h1><p className="mt-1 text-sm text-muted">Takes under a minute.</p></div>
       {invite && <p className="rounded-xl bg-brand/10 p-3 text-sm text-brand-dark">You were invited by a coach. Create a client account to accept.</p>}
       {error && <ErrorBox message={error} />}
       {!invite && (
@@ -61,7 +61,7 @@ function SignupForm() {
               role="radio"
               aria-checked={role === r}
               onClick={() => setRole(r)}
-              className={cn("min-h-14 rounded-xl border-2 font-semibold capitalize", role === r ? "border-brand bg-brand/5 text-brand-dark" : "border-line bg-white text-muted")}
+              className={cn("min-h-14 rounded-xl border-2 font-semibold transition-colors duration-150 active:scale-[0.98]", role === r ? "border-brand bg-brand/8 text-brand-dark" : "border-line bg-surface text-muted hover:border-muted/40")}
             >
               I&apos;m a {r}
             </button>

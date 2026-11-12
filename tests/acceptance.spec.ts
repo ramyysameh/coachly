@@ -111,7 +111,7 @@ test("3. client logs sets, closes the app mid-session, resumes, completes; coach
   const sessionUrl = cli.url();
   const first = cli.locator("section[aria-label]").first();
   firstExercise = (await first.getAttribute("aria-label"))!;
-  originalTarget = (await first.locator("h2 + span").textContent())!.split("·")[0].trim(); // e.g. "4 × 5–8"
+  originalTarget = (await first.locator("h2 + span").textContent())!.split("·")[0].trim(); // e.g. "4 × 5-8"
 
   await first.getByLabel("Set 1 weight in lb").fill("135");
   await first.getByLabel("Set 1 reps").fill("8");
@@ -177,7 +177,7 @@ test("4. coach updates a future workout; the completed workout keeps original ta
 
   // The plan itself (future workouts) shows the new target.
   await cli.goto("/training");
-  await expect(cli.getByText(/6 × \d+–20/).first()).toBeVisible();
+  await expect(cli.getByText(/6 × \d+-20/).first()).toBeVisible();
 
   // Coach review of the completed session also shows the original target.
   await coach.goto(`/coach/clients/${clientId}?tab=workouts`);
@@ -210,7 +210,7 @@ test("5. client logs and edits a meal; totals update and the coach sees the revi
   await expect(cli.getByText(/^750$/).first()).toBeVisible();
 
   await coach.goto(`/coach/clients/${clientId}?tab=nutrition`);
-  await coach.getByLabel("Calories", { exact: true }).fill("2400");
+  await coach.getByRole("textbox", { name: "Calories", exact: true }).fill("2400");
   await coach.getByLabel("Protein (g)").fill("170");
   await coach.getByLabel("Carbs (g)").fill("260");
   await coach.getByLabel("Fat (g)").fill("70");
@@ -220,7 +220,7 @@ test("5. client logs and edits a meal; totals update and the coach sees the revi
   await expect(coach.getByText(/750 kcal/).first()).toBeVisible();
 
   await cli.reload();
-  await expect(cli.getByText("/ 2400")).toBeVisible();
+  await expect(cli.getByRole("progressbar", { name: "Calories" })).toHaveAttribute("aria-valuemax", "2400");
 });
 
 test("6. coach and client chat live in two sessions; history and unread counts persist", async () => {
@@ -294,4 +294,55 @@ test("7. a client cannot reach another client's data; an unrelated coach is deni
   await page.goto(`/coach/clients/${clientId}`);
   await expect(page.getByText("Client not found")).toBeVisible();
   await ctx.close();
+});
+
+// ── Resilience ──────────────────────────────────────────────────────────────
+
+test("8. the client app opens offline, queues a meal, and syncs it on reconnect", async () => {
+  // Visit pages online once so the service worker caches them.
+  await cli.goto("/today");
+  await cli.evaluate(async () => { await navigator.serviceWorker.ready; });
+  await cli.reload(); // now controlled by the service worker
+  await expect(cli.getByRole("heading", { name: /^Hi,/ })).toBeVisible();
+  await cli.goto("/nutrition");
+  await expect(cli.getByText("Test chicken bowl (large)")).toBeVisible();
+
+  await clientCtx.setOffline(true);
+  await cli.goto("/today");
+  await expect(cli.getByRole("heading", { name: /^Hi,/ })).toBeVisible(); // page served offline
+  await expect(cli.getByText(/^Offline. You can keep logging/)).toBeVisible();
+
+  await cli.goto("/nutrition");
+  await expect(cli.getByText("Test chicken bowl (large)")).toBeVisible(); // last-loaded data
+  const snack = cli.locator("section", { has: cli.getByRole("heading", { name: "snack" }) });
+  await snack.getByRole("button", { name: "Add food" }).click();
+  const dialog = cli.getByRole("dialog", { name: "Add food" });
+  await dialog.getByLabel("Food").fill(`Offline banana ${stamp}`);
+  await dialog.getByLabel("Serving size").fill("1 medium");
+  await dialog.getByLabel("Calories (kcal)").fill("105");
+  await dialog.getByRole("button", { name: "Add food" }).click();
+  const row = cli.getByText(`Offline banana ${stamp}`);
+  await expect(row).toBeVisible();
+  await expect(cli.locator("li", { has: row }).getByText("Not synced")).toBeVisible();
+
+  await clientCtx.setOffline(false);
+  await expect(cli.locator("li", { has: row }).getByText("Not synced")).toHaveCount(0, { timeout: 20_000 });
+
+  await coach.goto(`/coach/clients/${clientId}?tab=nutrition`);
+  await expect(coach.getByText(`Offline banana ${stamp}`)).toHaveCount(1);
+});
+
+test("9. when the backend is down, signed-in users see 'reconnecting', not the login page", async () => {
+  const { execSync } = await import("node:child_process");
+  const gateway = "supabase_kong_GYM_TRACKER";
+  execSync(`docker stop ${gateway}`, { stdio: "ignore" });
+  try {
+    await coach.goto("/coach");
+    await expect(coach.getByRole("heading", { name: "Can't reach the server" })).toBeVisible({ timeout: 30_000 });
+    expect(new URL(coach.url()).pathname).toBe("/coach"); // not bounced to /login
+  } finally {
+    execSync(`docker start ${gateway}`, { stdio: "ignore" });
+  }
+  // Recovers on its own once the backend is back.
+  await expect(coach.getByRole("heading", { name: "Dashboard" })).toBeVisible({ timeout: 60_000 });
 });

@@ -21,18 +21,18 @@ export default function CoachDashboard() {
       await supabase.from("coach_clients").select("client_id, status, profiles!coach_clients_client_id_fkey(id, full_name, goal)").eq("coach_id", profile.id).eq("status", "active"),
     ) as unknown as ClientRow[];
     const ids = clients.map((c) => c.client_id);
-    const [recent, convs, unreadRows, lastByClient, ...missed] = await Promise.all([
+    const [recent, convs, unreadRows, lastByClient, missed] = await Promise.all([
       supabase.from("workout_sessions").select("id, name, scheduled_date, completed_at, client_id, profiles(full_name)").in("client_id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]).eq("status", "completed").order("completed_at", { ascending: false }).limit(8),
       supabase.from("conversations").select("id, client_id").eq("coach_id", profile.id),
       supabase.rpc("unread_counts"),
       supabase.from("workout_sessions").select("client_id, completed_at").in("client_id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]).eq("status", "completed").order("completed_at", { ascending: false }).limit(500),
-      ...ids.map((id) => supabase.rpc("missed_sessions", { p_client: id, p_from: addDays(today, -14), p_to: addDays(today, -1) })),
+      supabase.rpc("coach_missed_sessions", { p_from: addDays(today, -14), p_to: addDays(today, -1) }),
     ]);
     const convByClient = Object.fromEntries((must(convs) as { id: string; client_id: string }[]).map((c) => [c.client_id, c.id]));
     const unreadByConv = Object.fromEntries((must(unreadRows) as { conversation_id: string; unread: number }[]).map((u) => [u.conversation_id, Number(u.unread)]));
     const last: Record<string, string> = {};
     for (const r of must(lastByClient) as { client_id: string; completed_at: string }[]) last[r.client_id] ??= r.completed_at;
-    const missedAll: Missed[] = missed.flatMap((m, i) => (must(m) as Omit<Missed, "client_id">[]).map((x) => ({ ...x, client_id: ids[i] })));
+    const missedAll = must(missed) as Missed[];
     return {
       clients: clients.map((c) => ({
         ...c.profiles,
@@ -65,7 +65,7 @@ export default function CoachDashboard() {
 
           <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
             <section>
-              <h2 className="mb-2 font-bold">Active clients</h2>
+              <h2 className="mb-3 font-semibold tracking-tight">Active clients</h2>
               {data.clients.length === 0 ? (
                 <Empty icon={<Users className="size-8" />} title="No clients yet">
                   <LinkButton href="/coach/invite" className="mt-3">Invite your first client</LinkButton>
@@ -74,7 +74,7 @@ export default function CoachDashboard() {
                 <ul className="space-y-2">
                   {data.clients.map((c) => (
                     <li key={c.id}>
-                      <Link href={`/coach/clients/${c.id}`} className="flex min-h-16 items-center gap-3 rounded-2xl border border-line bg-white px-4 py-3 hover:border-brand/40">
+                      <Link href={`/coach/clients/${c.id}`} className="flex min-h-16 items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3 shadow-card transition-[border-color,transform] duration-150 hover:border-brand/40 active:scale-[0.99]">
                         <Avatar name={c.full_name} />
                         <div className="min-w-0 flex-1">
                           <p className="truncate font-semibold">{c.full_name}</p>
@@ -97,7 +97,7 @@ export default function CoachDashboard() {
 
             <div className="space-y-6">
               <section>
-                <h2 className="mb-2 font-bold">Recent workouts</h2>
+                <h2 className="mb-3 font-semibold tracking-tight">Recent workouts</h2>
                 <Card className="p-0">
                   {data.recent.length === 0 ? (
                     <p className="p-4 text-sm text-muted">No completed workouts yet.</p>
@@ -105,7 +105,7 @@ export default function CoachDashboard() {
                     <ul className="divide-y divide-line">
                       {data.recent.map((r) => (
                         <li key={r.id}>
-                          <Link href={`/coach/clients/${r.client_id}?tab=workouts&session=${r.id}`} className="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-paper">
+                          <Link href={`/coach/clients/${r.client_id}?tab=workouts&session=${r.id}`} className="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-surface-2">
                             <span className="flex-1">
                               <span className="font-semibold">{r.profiles.full_name}</span> · {r.name}
                             </span>
@@ -118,17 +118,17 @@ export default function CoachDashboard() {
                 </Card>
               </section>
               <section>
-                <h2 className="mb-2 font-bold">Missed sessions</h2>
+                <h2 className="mb-3 font-semibold tracking-tight">Missed sessions</h2>
                 <Card className="p-0">
                   {data.missed.length === 0 ? (
-                    <p className="p-4 text-sm text-muted">Nothing missed in the last 14 days. 🎉</p>
+                    <p className="p-4 text-sm text-muted">Nothing missed in the last 14 days.</p>
                   ) : (
                     <ul className="divide-y divide-line">
                       {data.missed.slice(0, 8).map((m) => (
                         <li key={m.client_id + m.scheduled_date + m.day_name}>
-                          <Link href={`/coach/clients/${m.client_id}`} className="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-paper">
+                          <Link href={`/coach/clients/${m.client_id}`} className="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-surface-2">
                             <span className="flex-1"><span className="font-semibold">{data.names[m.client_id]}</span> · {m.day_name}</span>
-                            <span className="text-xs text-amber-700">{fmtDate(m.scheduled_date)}</span>
+                            <span className="text-xs text-warn">{fmtDate(m.scheduled_date)}</span>
                           </Link>
                         </li>
                       ))}
@@ -146,10 +146,10 @@ export default function CoachDashboard() {
 
 function StatCard({ icon, label, value, tone, href }: { icon: React.ReactNode; label: string; value: number; tone?: "warn" | "brand"; href?: string }) {
   const body = (
-    <Card className={tone === "warn" ? "border-amber-200 bg-amber-50/50" : tone === "brand" ? "border-brand/30 bg-brand/5" : ""}>
-      <div className="flex items-center gap-2 text-muted">{icon}<span className="text-xs font-semibold">{label}</span></div>
-      <p className="mt-1 text-3xl font-bold tabular-nums">{value}</p>
+    <Card className={tone === "warn" ? "border-warn-line bg-warn-bg/50" : tone === "brand" ? "border-brand/30 bg-brand/5" : ""}>
+      <div className="flex items-center gap-2 text-muted [&_svg]:size-4">{icon}<span className="text-xs font-medium">{label}</span></div>
+      <p className="mt-2 text-3xl font-semibold tracking-tight tabular-nums">{value}</p>
     </Card>
   );
-  return href ? <Link href={href}>{body}</Link> : body;
+  return href ? <Link href={href} className="block rounded-2xl transition-transform duration-150 active:scale-[0.98]">{body}</Link> : body;
 }

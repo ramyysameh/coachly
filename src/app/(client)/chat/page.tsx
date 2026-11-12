@@ -27,7 +27,7 @@ export default function ChatPage() {
   if (!data) return <Empty icon={<MessageCircle className="size-8" />} title="No coach yet">Once you accept a coach&apos;s invite you can chat here.</Empty>;
 
   return (
-    <div className="-mx-4 -mt-4 flex flex-col bg-paper md:mx-0 md:mt-0 md:rounded-2xl md:border md:border-line md:bg-white"
+    <div className="-mx-4 -mt-4 flex flex-col bg-paper md:mx-0 md:mt-0 md:rounded-2xl md:border md:border-line md:bg-surface"
       style={{ height: "calc(100dvh - 3.5rem - 4rem - env(safe-area-inset-bottom))" }}>
       <ChatThread conversationId={data.id} otherName={data.coach.full_name} canSend={data.coach_clients.status === "active"} />
     </div>

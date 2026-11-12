@@ -90,7 +90,7 @@ export default function PlanBuilderPage({ params }: { params: Promise<{ id: stri
       </Card>
 
       {saveError && <ErrorBox message={saveError} />}
-      {clashes.length > 0 && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">More than one workout is scheduled on {clashes.join(", ")}. Clients will see the first one listed.</p>}
+      {clashes.length > 0 && <p className="rounded-xl border border-warn-line bg-warn-bg p-3 text-sm text-warn">More than one workout is scheduled on {clashes.join(", ")}. Clients will see the first one listed.</p>}
 
       {plan.plan_days.length === 0 && <Empty title="No workout days yet">Add a day such as &quot;Push&quot; or &quot;Upper&quot;, pick the weekdays it runs, then add exercises.</Empty>}
 
@@ -151,11 +151,11 @@ function DayCard({ day, first, last, write, onMove, onMoveExercise, onAddExercis
     write(() => supabase.from("plan_days").update({ weekdays: next }).eq("id", day.id));
   }
   return (
-    <section className="rounded-2xl border border-line bg-white" aria-label={day.name}>
+    <section className="rounded-2xl border border-line bg-surface" aria-label={day.name}>
       <div className="flex items-center gap-2 border-b border-line p-3">
         <Input
           aria-label="Day name"
-          className="flex-1 font-bold"
+          className="flex-1 font-semibold"
           defaultValue={day.name}
           key={`d-${day.name}`}
           onBlur={(e) => {
@@ -178,7 +178,7 @@ function DayCard({ day, first, last, write, onMove, onMoveExercise, onAddExercis
             const on = day.weekdays.includes(w);
             return (
               <button key={w} onClick={() => toggleDay(w)} aria-pressed={on}
-                className={cn("min-h-10 min-w-12 rounded-lg border px-2 text-sm font-semibold", on ? "border-brand bg-brand text-white" : "border-line bg-white text-muted")}>
+                className={cn("min-h-10 min-w-12 rounded-lg border px-2 text-sm font-semibold", on ? "border-brand bg-brand text-brand-fg" : "border-line bg-surface text-muted")}>
                 {label}
               </button>
             );
@@ -191,7 +191,7 @@ function DayCard({ day, first, last, write, onMove, onMoveExercise, onAddExercis
         ))}
         {day.plan_exercises.length === 0 && <li className="p-3 text-sm text-muted">No exercises yet.</li>}
       </ul>
-      <button onClick={onAddExercise} className="flex min-h-12 w-full items-center justify-center gap-2 border-t border-line text-sm font-semibold text-brand hover:bg-paper">
+      <button onClick={onAddExercise} className="flex min-h-12 w-full items-center justify-center gap-2 border-t border-line text-sm font-semibold text-brand hover:bg-surface-2">
         <Plus className="size-4" /> Add exercise
       </button>
     </section>
@@ -231,7 +231,7 @@ function ExerciseRow({ pe, first, last, write, onMove }: { pe: PlanExercise; fir
       </div>
       <Input className="mt-2 text-sm" placeholder="Notes for the client (optional)" defaultValue={pe.notes ?? ""} aria-label={`${pe.exercises.name} notes`}
         onBlur={(e) => e.target.value !== (pe.notes ?? "") && write(() => supabase.from("plan_exercises").update({ notes: e.target.value || null }).eq("id", pe.id))} />
-      {err && <p className="mt-1 text-xs font-medium text-red-700" role="alert">{err}</p>}
+      {err && <p className="mt-1 text-xs font-medium text-danger" role="alert">{err}</p>}
     </li>
   );
 }
@@ -239,7 +239,7 @@ function ExerciseRow({ pe, first, last, write, onMove }: { pe: PlanExercise; fir
 function IconBtn({ label, onClick, disabled, danger, children }: { label: string; onClick: () => void; disabled?: boolean; danger?: boolean; children: React.ReactNode }) {
   return (
     <button aria-label={label} title={label} onClick={onClick} disabled={disabled}
-      className={cn("flex size-10 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-paper disabled:opacity-30", danger && "hover:bg-red-50 hover:text-red-700")}>
+      className={cn("flex size-10 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-surface-2 disabled:opacity-30", danger && "hover:bg-danger-bg hover:text-danger")}>
       {children}
     </button>
   );
@@ -272,7 +272,7 @@ function ExercisePicker({ onClose, onPick }: { onClose: () => void; onPick: (ex:
   async function createCustom(e: React.FormEvent) {
     e.preventDefault();
     if (!custom.name.trim()) return setErr("Enter an exercise name.");
-    if ((data ?? []).some((x) => x.name.toLowerCase() === custom.name.trim().toLowerCase())) return setErr("An exercise with this name already exists — search for it above.");
+    if ((data ?? []).some((x) => x.name.toLowerCase() === custom.name.trim().toLowerCase())) return setErr("An exercise with this name already exists. Search for it above.");
     setSaving(true);
     setErr(null);
     const { data: ex, error } = await supabase
@@ -287,12 +287,12 @@ function ExercisePicker({ onClose, onPick }: { onClose: () => void; onPick: (ex:
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 md:items-center" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex animate-fade items-end justify-center bg-slate-950/50 backdrop-blur-[2px] md:items-center" onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Exercise library"
-        className="flex max-h-[90dvh] w-full max-w-lg flex-col rounded-t-3xl bg-white md:rounded-3xl" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+        className="flex max-h-[90dvh] w-full max-w-lg animate-sheet flex-col rounded-t-3xl border border-line bg-surface shadow-2xl md:rounded-3xl" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
         <div className="flex items-center justify-between p-4 pb-2">
-          <h2 className="text-lg font-bold">{creating ? "Custom exercise" : "Exercise library"}</h2>
-          <button onClick={onClose} className="flex size-11 items-center justify-center rounded-xl hover:bg-paper" aria-label="Close"><X className="size-5" /></button>
+          <h2 className="text-lg font-semibold">{creating ? "Custom exercise" : "Exercise library"}</h2>
+          <button onClick={onClose} className="flex size-11 items-center justify-center rounded-xl hover:bg-surface-2" aria-label="Close"><X className="size-5" /></button>
         </div>
         {creating ? (
           <form onSubmit={createCustom} className="space-y-3 overflow-y-auto p-4 pt-0" noValidate>
@@ -320,7 +320,7 @@ function ExercisePicker({ onClose, onPick }: { onClose: () => void; onPick: (ex:
               </div>
               <div className="flex gap-1.5 overflow-x-auto pb-1">
                 {groups.map((g) => (
-                  <button key={g} onClick={() => setGroup(g)} className={cn("min-h-9 shrink-0 rounded-full border px-3 text-sm font-medium", g === group ? "border-brand bg-brand text-white" : "border-line text-muted")}>{g}</button>
+                  <button key={g} onClick={() => setGroup(g)} className={cn("min-h-9 shrink-0 rounded-full border px-3 text-sm font-medium", g === group ? "border-brand bg-brand text-brand-fg" : "border-line text-muted")}>{g}</button>
                 ))}
               </div>
             </div>
@@ -331,7 +331,7 @@ function ExercisePicker({ onClose, onPick }: { onClose: () => void; onPick: (ex:
                 <ul>
                   {list.map((e) => (
                     <li key={e.id}>
-                      <button onClick={() => onPick(e)} className="flex min-h-12 w-full items-center gap-2 rounded-xl px-3 py-2 text-left hover:bg-paper">
+                      <button onClick={() => onPick(e)} className="flex min-h-12 w-full items-center gap-2 rounded-xl px-3 py-2 text-left hover:bg-surface-2">
                         <span className="flex-1 font-medium">{e.name}</span>
                         <span className="text-xs text-muted">{[e.muscle_group, e.equipment].filter(Boolean).join(" · ")}</span>
                         {e.created_by && <Badge tone="brand">Custom</Badge>}

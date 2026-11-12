@@ -38,7 +38,7 @@ export default function OnboardingForm({ profile }: { profile: Profile }) {
 
   return (
     <main className="mx-auto max-w-md px-5 py-10">
-      <h1 className="text-2xl font-bold">Welcome! Let&apos;s set you up</h1>
+      <h1 className="text-2xl font-semibold">Welcome! Let&apos;s set you up</h1>
       <p className="mt-1 text-muted">This helps your coach plan your training.</p>
       <form onSubmit={save} className="mt-6 space-y-5" noValidate>
         {error && <ErrorBox message={error} />}
@@ -58,7 +58,7 @@ export default function OnboardingForm({ profile }: { profile: Profile }) {
                 role="radio"
                 aria-checked={unit === u}
                 onClick={() => setUnit(u)}
-                className={cn("min-h-14 rounded-xl border-2 text-lg font-bold", unit === u ? "border-brand bg-brand/5 text-brand-dark" : "border-line bg-white text-muted")}
+                className={cn("min-h-14 rounded-xl border-2 text-lg font-semibold", unit === u ? "border-brand bg-brand/5 text-brand-dark" : "border-line bg-surface text-muted")}
               >
                 {u}
               </button>
