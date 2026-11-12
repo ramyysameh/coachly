@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { errMsg } from "@/lib/utils";
 
 /** Minimal data loader: runs `fn` on mount and whenever deps change. */
 export function useAsync<T>(fn: () => Promise<T>, deps: unknown[]) {
@@ -17,7 +18,7 @@ export function useAsync<T>(fn: () => Promise<T>, deps: unknown[]) {
     try {
       setData(await fnRef.current());
     } catch (e) {
-      setError((e as { message?: string })?.message ?? "Failed to load");
+      setError(e ? errMsg(e) : "Failed to load");
     } finally {
       setLoading(false);
     }

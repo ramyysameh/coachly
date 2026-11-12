@@ -1,10 +1,10 @@
 "use client";
 import { use, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Dumbbell, UserCheck } from "lucide-react";
+import { UserCheck } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useAsync } from "@/lib/useAsync";
-import { Button, Card, ErrorBox, LinkButton, Spinner } from "@/components/ui";
+import { Button, Card, CenteredPage, ErrorBox, LinkButton, Spinner } from "@/components/ui";
 import { errMsg } from "@/lib/utils";
 
 type Invite = { coach_name: string; expires_at: string; status: "valid" | "expired" | "used" | "revoked" };
@@ -44,11 +44,7 @@ export default function InvitePage({ params }: { params: Promise<{ token: string
   }
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-5 py-10">
-      <div className="mb-8 flex items-center gap-2 text-brand">
-        <Dumbbell className="size-7" aria-hidden />
-        <span className="text-2xl font-semibold tracking-tight text-ink">Coachly</span>
-      </div>
+    <CenteredPage card={false}>
       {loading ? (
         <Spinner />
       ) : loadError ? (
@@ -91,6 +87,6 @@ export default function InvitePage({ params }: { params: Promise<{ token: string
           )}
         </Card>
       )}
-    </main>
+    </CenteredPage>
   );
 }

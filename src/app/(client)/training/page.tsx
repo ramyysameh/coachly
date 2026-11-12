@@ -59,7 +59,7 @@ export default function TrainingPage() {
                     <li key={pe.id} className="px-4 py-2.5 text-sm">
                       <div className="flex justify-between gap-2">
                         <span className="font-medium">{pe.exercises.name}</span>
-                        <span className="shrink-0 tabular-nums text-muted">
+                        <span className="shrink-0 font-mono text-xs tabular-nums text-muted">
                           {pe.target_sets} × {pe.rep_min}-{pe.rep_max} · {fmtRest(pe.rest_seconds)}
                         </span>
                       </div>

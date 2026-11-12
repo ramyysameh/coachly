@@ -69,7 +69,13 @@ function MessagesInner() {
             </div>
           </>
         ) : (
-          <div className="flex flex-1 items-center justify-center p-6 text-muted">Select a conversation</div>
+          <div className="flex flex-1 animate-enter flex-col items-center justify-center gap-3 p-6 text-center">
+            <span className="flex size-14 items-center justify-center rounded-full bg-surface-2 text-muted" aria-hidden>
+              <MessageCircle className="size-6" />
+            </span>
+            <p className="font-semibold text-ink">Pick a client to start chatting</p>
+            <p className="max-w-[36ch] text-sm leading-relaxed text-muted">Their messages and your replies appear here, live.</p>
+          </div>
         )}
       </section>
     </div>

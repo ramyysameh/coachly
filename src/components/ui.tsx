@@ -97,7 +97,9 @@ export function Textarea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
 }
 
 export function Card({ className, children }: { className?: string; children: ReactNode }) {
-  return <div className={cn("rounded-2xl border border-line bg-surface p-4 shadow-card", className)}>{children}</div>;
+  // cn() only joins classes, so skip the default padding when the caller sets its own.
+  const ownPadding = /(^|\s)p-\S+/.test(className ?? "");
+  return <div className={cn("rounded-2xl border border-line bg-surface shadow-card", !ownPadding && "p-4", className)}>{children}</div>;
 }
 
 export function Spinner({ label = "Loading…" }: { label?: string }) {
@@ -225,6 +227,40 @@ export function BrandMark({ compact }: { compact?: boolean }) {
         <Dumbbell className={compact ? "size-4" : "size-[18px]"} strokeWidth={2.25} aria-hidden />
       </span>
       <span className={cn("font-semibold tracking-tight text-ink", compact ? "text-base" : "text-lg")}>Coachly</span>
+    </span>
+  );
+}
+
+/** Full-screen centred layout for auth, invite and status pages: brand mark over a single card. */
+export function CenteredPage({ children, card = true, role }: { children: ReactNode; card?: boolean; role?: string }) {
+  return (
+    <main className="relative flex min-h-dvh flex-col items-center justify-center overflow-hidden px-5 py-10" role={role}>
+      {/* soft brand wash behind the content; purely decorative */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-[420px] bg-[radial-gradient(60%_60%_at_50%_0%,color-mix(in_oklab,var(--color-brand)_14%,transparent),transparent)]"
+      />
+      <div className="relative w-full max-w-[400px] animate-enter">
+        <div className="mb-8 flex justify-center">
+          <BrandMark />
+        </div>
+        {card ? <div className="rounded-2xl border border-line bg-surface p-6 shadow-card sm:p-7">{children}</div> : children}
+      </div>
+    </main>
+  );
+}
+
+/** Icon tile used at the top of status cards (offline, errors, not found). */
+export function StatusIcon({ children, tone = "neutral" }: { children: ReactNode; tone?: "neutral" | "warn" }) {
+  return (
+    <span
+      className={cn(
+        "flex size-12 items-center justify-center rounded-full [&_svg]:size-6",
+        tone === "warn" ? "bg-warn-bg text-warn" : "bg-surface-2 text-muted",
+      )}
+      aria-hidden
+    >
+      {children}
     </span>
   );
 }

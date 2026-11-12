@@ -74,5 +74,12 @@ export function errMsg(e: unknown): string {
   if (!e) return "Something went wrong";
   if (typeof e === "string") return e;
   const anyE = e as { message?: string };
-  return anyE.message || "Something went wrong";
+  const msg = anyE.message || "";
+  // Browser network failures surface as "TypeError: Failed to fetch" / "NetworkError…" / "Load failed".
+  if (/failed to fetch|networkerror|load failed|network request failed/i.test(msg)) {
+    return typeof navigator !== "undefined" && !navigator.onLine
+      ? "You're offline. Check your connection and try again."
+      : "Couldn't reach the server. Check your connection and try again.";
+  }
+  return msg || "Something went wrong";
 }
