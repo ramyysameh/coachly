@@ -9,13 +9,16 @@ import { getActivePlan, mealTotals, scheduledDay, type Meal, type Session, type 
 import { useProfile } from "@/components/AppShell";
 import { Button, Card, Empty, ErrorBox, Meter, PageHeader, Skeleton } from "@/components/ui";
 import { WeekGlance } from "@/components/TrainingCalendar";
+import SessionPrs from "@/components/SessionPrs";
 import { addDays, errMsg, fmtDate, fmtRest, localDate, WEEKDAYS } from "@/lib/utils";
 import { isUnreachable } from "@/lib/supabase/authState";
 
 function TodayInner() {
   const supabase = createClient();
   const router = useRouter();
-  const justFinished = useSearchParams().get("done") === "1";
+  const search = useSearchParams();
+  const justFinished = search.get("done") === "1";
+  const finishedSession = search.get("session");
   const { profile } = useProfile();
   const today = localDate();
   const [starting, setStarting] = useState(false);
@@ -91,6 +94,9 @@ function TodayInner() {
         <p className="flex items-center gap-2 rounded-2xl border border-brand/20 bg-brand/10 p-3 text-sm font-medium text-brand-dark" role="status">
           <CheckCircle2 className="size-5" /> Workout saved. Nice work!
         </p>
+      )}
+      {justFinished && finishedSession && (
+        <SessionPrs clientId={profile.id} sessionId={finishedSession} date={today} unit={profile.weight_unit} celebrate />
       )}
 
       {unfinished.map((s) => (

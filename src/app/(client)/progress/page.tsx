@@ -20,7 +20,7 @@ export default function ProgressPage() {
       <TrainingCalendar clientId={profile.id} unit={profile.weight_unit} />
       <div>
         <h2 className="mb-1 text-lg font-semibold tracking-tight">Stats</h2>
-        <p className="mb-3 text-sm text-muted">Last 4 weeks · weights in {profile.weight_unit}</p>
+        <p className="mb-3 text-sm text-muted">Last 90 days · weights in {profile.weight_unit}</p>
         <ProgressView clientId={profile.id} unit={profile.weight_unit} canLogWeight />
       </div>
     </div>

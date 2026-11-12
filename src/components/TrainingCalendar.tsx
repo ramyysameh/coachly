@@ -7,6 +7,7 @@ import { getActivePlan, SESSION_SELECT, sortSession, type Plan, type Session } f
 import { adherence, buildDays, monthGrid, streak, TYPE_STYLE, weekDates, type CalDay, type CalSession, type SessionType } from "@/lib/calendar";
 import { Sheet } from "@/components/ExerciseLibrary";
 import SessionDetail from "@/components/SessionDetail";
+import SessionPrs from "@/components/SessionPrs";
 import { Card, ErrorBox, Skeleton, Spinner } from "@/components/ui";
 import { addDays, cn, fmtDate, fmtWeight, localDate, WEEKDAYS, type Unit } from "@/lib/utils";
 
@@ -188,6 +189,7 @@ function SessionSummary({ s, unit }: { s: Session; unit: Unit }) {
           <Mini label="Duration" value={mins !== null && mins > 0 && mins < 600 ? `${mins} min` : "—"} />
         </dl>
       </div>
+      {s.status === "completed" && <SessionPrs clientId={s.client_id} sessionId={s.id} date={s.scheduled_date} unit={unit} />}
       <SessionDetail session={s} unit={unit} />
     </section>
   );

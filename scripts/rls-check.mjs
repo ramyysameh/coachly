@@ -138,6 +138,17 @@ check("Client can upload their own avatar", !m4.error, m4.error?.message);
 const m5 = await alex.storage.from("avatars").remove([ownPath]);
 check("Client can delete their own avatar", !m5.error && (m5.data ?? []).length === 1, m5.error?.message);
 
+// Analytics: completed sets follow the same access rules as sessions
+const allTime = { p_client: ALEX, p_from: "2000-01-01", p_to: "2100-01-01" };
+const a1 = await coach2.rpc("completed_sets", allTime);
+check("Other coach gets none of Alex's completed sets", !a1.error && (a1.data ?? []).length === 0, a1.error?.message);
+const a2 = await sam.rpc("completed_sets", allTime);
+check("Another client gets none of Alex's completed sets", !a2.error && (a2.data ?? []).length === 0, a2.error?.message);
+const a3 = await coach.rpc("completed_sets", allTime);
+check("Alex's coach sees Alex's completed sets", !a3.error && (a3.data ?? []).length > 0, a3.error?.message);
+const a4 = await anon.rpc("completed_sets", allTime);
+check("Anonymous cannot call completed_sets", !!a4.error || (a4.data ?? []).length === 0, a4.error?.message);
+
 // Signed-out requests
 check("Anonymous cannot read sessions", (await rows(anon.from("workout_sessions").select("id"))).n === 0);
 check("Anonymous cannot read messages", (await rows(anon.from("messages").select("id"))).n === 0);

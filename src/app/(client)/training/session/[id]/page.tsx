@@ -64,7 +64,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
       .eq("id", id);
     setFinishing(false);
     if (error) return setError(errMsg(error));
-    router.push("/today?done=1");
+    router.push(`/today?done=1&session=${id}`);
   }
 
   if (loading) return <Spinner label="Loading workout…" />;
