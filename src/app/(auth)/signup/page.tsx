@@ -6,6 +6,17 @@ import { createClient } from "@/lib/supabase/client";
 import { Button, ErrorBox, Field, Input } from "@/components/ui";
 import { cn } from "@/lib/utils";
 
+/** Supabase auth errors arrive as terse lowercase strings; say what happened and what to do. */
+function signupErrorMessage(error: { message: string; code?: string; status?: number }) {
+  if (error.code === "over_email_send_rate_limit" || error.status === 429)
+    return "Too many sign-up emails were sent in the last hour. Please try again later.";
+  if (error.code === "user_already_exists" || error.code === "email_exists")
+    return "An account with this email already exists. Log in instead.";
+  if (error.code === "email_address_invalid") return "That email address can't receive mail. Use one you can open.";
+  if (error.code === "weak_password") return "Choose a stronger password.";
+  return error.message.charAt(0).toUpperCase() + error.message.slice(1);
+}
+
 function SignupForm() {
   const router = useRouter();
   const invite = useSearchParams().get("invite");
@@ -39,7 +50,7 @@ function SignupForm() {
       },
     });
     setLoading(false);
-    if (error) return setError(error.message);
+    if (error) return setError(signupErrorMessage(error));
     if (!data.session) return setInfo("Check your email to confirm your account, then log in.");
     router.replace(next);
     router.refresh();
