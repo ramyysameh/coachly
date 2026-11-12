@@ -34,6 +34,14 @@ Reset the database (re-runs migrations and seed): `npx supabase db reset`.
 3. Optionally load demo data: run `supabase/seed.sql` in the SQL editor.
 4. In Auth → URL configuration, set the site URL to your app URL.
 
+## Production
+
+- **Live app:** https://coachly-gules.vercel.app (Vercel project `coachly`, region `fra1`). Every push to `master` deploys automatically; other branches get preview URLs.
+- **Database/auth:** Supabase project `coachly` (`kvlwmpfzgkdopjjlcswi`, Central EU / Frankfurt). No demo data is loaded there.
+- **Env vars on Vercel:** `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` (the publishable key). `NEXT_PUBLIC_SHOW_DEMO_LOGINS` is intentionally unset.
+- **Auth URLs:** site URL is the live app; redirects allowed for the live app, Vercel previews and `http://localhost:3000`.
+- **New migrations:** run `npx supabase link --project-ref kvlwmpfzgkdopjjlcswi` once, then `npx supabase db push`. Applied migrations are recorded in `supabase_migrations.schema_migrations`.
+
 ## Demo accounts (sample data)
 
 All passwords: `demo-pass-123`. Seeded data is labelled "(Sample)" and dated relative to the day you seed.
