@@ -34,7 +34,18 @@ export type Profile = {
   goal: string | null;
   weight_unit: "kg" | "lb";
   onboarded: boolean;
+  avatar_url: string | null;
+  date_of_birth: string | null;
+  height_cm: number | null;
+  height_unit: "cm" | "ft";
+  goal_type: GoalType | null;
+  experience_level: Level | null;
+  injuries: string | null;
+  training_days_per_week: number | null;
+  created_at: string;
 };
+export type GoalType = "fat_loss" | "muscle_gain" | "strength" | "general";
+export type Level = "beginner" | "intermediate" | "advanced";
 
 export type ProfileResult =
   | { status: "ok"; profile: Profile }

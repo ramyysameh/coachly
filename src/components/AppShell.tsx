@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
-import { BarChart3, CalendarCheck, ClipboardList, Dumbbell, LayoutDashboard, LogOut, MessageCircle, Salad, UserPlus, Users } from "lucide-react";
+import { BarChart3, BookOpen, CalendarCheck, ClipboardList, Dumbbell, LayoutDashboard, LogOut, MessageCircle, Salad, UserPlus, Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { Profile } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
@@ -34,6 +34,7 @@ const coachNav: NavItem[] = [
   { href: "/coach", label: "Dashboard", icon: LayoutDashboard },
   { href: "/coach/clients", label: "Clients", icon: Users },
   { href: "/coach/plans", label: "Plans", icon: ClipboardList },
+  { href: "/coach/library", label: "Library", icon: BookOpen },
   { href: "/coach/messages", label: "Messages", icon: MessageCircle, badge: true },
   { href: "/coach/invite", label: "Invite", icon: UserPlus },
 ];

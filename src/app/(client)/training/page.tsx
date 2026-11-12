@@ -1,12 +1,12 @@
 "use client";
 import Link from "next/link";
 import { useState } from "react";
-import { ChevronRight, ClipboardList, History } from "lucide-react";
+import { BookOpen, ChevronRight, ClipboardList, History } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useAsync, must } from "@/lib/useAsync";
 import { getActivePlan, type Session } from "@/lib/data";
 import { useProfile } from "@/components/AppShell";
-import { Badge, Card, Empty, ErrorBox, PageHeader, Spinner, Tabs } from "@/components/ui";
+import { Badge, Card, Empty, ErrorBox, LinkButton, PageHeader, Spinner, Tabs } from "@/components/ui";
 import { fmtDate, fmtRest, WEEKDAYS } from "@/lib/utils";
 
 type SessionRow = Session & { session_exercises: { session_sets: { completed: boolean }[] }[] };
@@ -32,7 +32,7 @@ export default function TrainingPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Training" />
+      <PageHeader title="Training" action={<LinkButton href="/library" variant="secondary"><BookOpen className="size-4" /> Library</LinkButton>} />
       <Tabs value={tab} onChange={setTab} options={[{ value: "plan", label: "My plan" }, { value: "history", label: "History" }]} />
       {loading ? (
         <Spinner />

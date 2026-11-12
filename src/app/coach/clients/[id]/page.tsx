@@ -9,19 +9,21 @@ import { getActivePlan, SESSION_SELECT, sortSession, type Plan, type Session, ty
 import { useProfile } from "@/components/AppShell";
 import NutritionDay from "@/components/NutritionDay";
 import ProgressView from "@/components/ProgressView";
+import ProfileHeader from "@/components/ProfileHeader";
+import TrainingCalendar, { WeekGlance } from "@/components/TrainingCalendar";
 import SessionDetail from "@/components/SessionDetail";
-import { Avatar, Badge, Button, Card, Empty, ErrorBox, Field, Input, LinkButton, NumInput, Select, Spinner, Tabs, Textarea } from "@/components/ui";
+import { Badge, Button, Card, Empty, ErrorBox, Field, Input, LinkButton, NumInput, Select, Spinner, Tabs, Textarea } from "@/components/ui";
 import { addDays, errMsg, fmtDate, fmtDateTime, localDate, WEEKDAYS, type Unit } from "@/lib/utils";
 
 type Client = { id: string; full_name: string; goal: string | null; weight_unit: Unit };
-type Tab = "plan" | "workouts" | "nutrition" | "progress" | "notes";
+type Tab = "overview" | "plan" | "workouts" | "nutrition" | "progress" | "notes";
 
 function ClientProfileInner({ id }: { id: string }) {
   const supabase = createClient();
   const router = useRouter();
   const params = useSearchParams();
   const { profile } = useProfile();
-  const [tab, setTab] = useState<Tab>((params.get("tab") as Tab) || "plan");
+  const [tab, setTab] = useState<Tab>((params.get("tab") as Tab) || "overview");
   const [from, setFrom] = useState(addDays(localDate(), -27));
   const [to, setTo] = useState(localDate());
   const [busy, setBusy] = useState(false);
@@ -63,29 +65,28 @@ function ClientProfileInner({ id }: { id: string }) {
   return (
     <div className="space-y-4">
       <Link href="/coach" className="inline-flex min-h-10 items-center gap-1 text-sm font-semibold text-muted"><ChevronLeft className="size-4" /> Dashboard</Link>
-      <div className="flex flex-wrap items-center gap-3">
-        <Avatar name={client.full_name} />
-        <div className="min-w-0 flex-1">
-          <h1 className="flex items-center gap-2 text-2xl font-semibold">
-            <span className="truncate">{client.full_name}</span>
-            {!active && <Badge>Archived</Badge>}
-          </h1>
-          <p className="text-sm text-muted">{client.goal || "No goal set"} · uses {client.weight_unit} · client since {fmtDate(data.since.slice(0, 10))}</p>
-        </div>
-        <div className="flex gap-2">
-          <LinkButton href={`/coach/messages?client=${client.id}`} variant="secondary"><MessageCircle className="size-4" /> Message</LinkButton>
-          {active ? (
-            <Button variant="danger" onClick={() => setStatus("archived")} loading={busy}><Archive className="size-4" /> Archive</Button>
-          ) : (
-            <Button variant="secondary" onClick={() => setStatus("active")} loading={busy}><ArchiveRestore className="size-4" /> Restore</Button>
-          )}
-        </div>
-      </div>
+      <ProfileHeader
+        clientId={client.id}
+        viewer="coach"
+        since={data.since}
+        archived={!active}
+        actions={
+          <>
+            <LinkButton href={`/coach/messages?client=${client.id}`} variant="secondary"><MessageCircle className="size-4" /> Message</LinkButton>
+            {active ? (
+              <Button variant="danger" onClick={() => setStatus("archived")} loading={busy}><Archive className="size-4" /> Archive</Button>
+            ) : (
+              <Button variant="secondary" onClick={() => setStatus("active")} loading={busy}><ArchiveRestore className="size-4" /> Restore</Button>
+            )}
+          </>
+        }
+      />
 
       <Tabs
         value={tab}
         onChange={setTab}
         options={[
+          { value: "overview", label: "Overview" },
           { value: "plan", label: "Plan" },
           { value: "workouts", label: "Workouts" },
           { value: "nutrition", label: "Nutrition" },
@@ -106,6 +107,12 @@ function ClientProfileInner({ id }: { id: string }) {
         </div>
       )}
 
+      {tab === "overview" && (
+        <div className="space-y-4">
+          <WeekGlance clientId={client.id} unit={client.weight_unit} />
+          <TrainingCalendar clientId={client.id} unit={client.weight_unit} />
+        </div>
+      )}
       {tab === "plan" && <PlanTab clientId={client.id} active={active} />}
       {tab === "workouts" && <WorkoutsTab clientId={client.id} unit={client.weight_unit} from={from} to={to} openId={params.get("session")} />}
       {tab === "nutrition" && (

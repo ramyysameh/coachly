@@ -117,6 +117,27 @@ const r2 = await alex.from("messages").upsert(msg, { onConflict: "id", ignoreDup
 const stored = await rows(alex.from("messages").select("id").eq("id", mid));
 check("Retrying a send never duplicates the message", !r1.error && !r2.error && stored.n === 1, r1.error?.message || r2.error?.message);
 
+// Profile header fields: coaching details only by the client's own coach; profiles only by their owner
+const p1 = await coach2.rpc("coach_update_client", { p_client: ALEX, p_goal_type: "strength", p_experience_level: null, p_injuries: "x", p_training_days: 3 });
+check("Other coach cannot edit Alex's coaching details", !!p1.error, p1.error?.message);
+const p2 = await coach.from("profiles").update({ injuries: "hijack" }).eq("id", ALEX).select();
+check("Coach cannot write Alex's profile row directly", (p2.data ?? []).length === 0);
+const p3 = await sam.from("profiles").select("date_of_birth").eq("id", ALEX);
+check("Client cannot read another client's profile", (p3.data ?? []).length === 0);
+
+// Exercise library: only coaches add movements and exercise media
+const m1 = await alex.from("movements").insert({ name: "rls tmp", pattern: "push", created_by: ALEX });
+check("Client cannot add movements", !!m1.error, m1.error?.message);
+const m2 = await alex.storage.from("exercise-media").upload(`${ALEX}/rls.png`, new Blob(["x"], { type: "image/png" }), { contentType: "image/png" });
+check("Client cannot upload exercise media", !!m2.error, m2.error?.message);
+const m3 = await alex.storage.from("avatars").upload(`${SAM}/rls.png`, new Blob(["x"], { type: "image/png" }), { contentType: "image/png" });
+check("Client cannot upload into another user's avatar folder", !!m3.error, m3.error?.message);
+const ownPath = `${ALEX}/rls-check-${Date.now()}.png`;
+const m4 = await alex.storage.from("avatars").upload(ownPath, new Blob(["x"], { type: "image/png" }), { contentType: "image/png" });
+check("Client can upload their own avatar", !m4.error, m4.error?.message);
+const m5 = await alex.storage.from("avatars").remove([ownPath]);
+check("Client can delete their own avatar", !m5.error && (m5.data ?? []).length === 1, m5.error?.message);
+
 // Signed-out requests
 check("Anonymous cannot read sessions", (await rows(anon.from("workout_sessions").select("id"))).n === 0);
 check("Anonymous cannot read messages", (await rows(anon.from("messages").select("id"))).n === 0);

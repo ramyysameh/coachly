@@ -215,9 +215,14 @@ export function Tabs<T extends string>({ value, onChange, options }: { value: T;
   );
 }
 
-export function Avatar({ name }: { name: string }) {
+export function Avatar({ name, src, size = "md" }: { name: string; src?: string | null; size?: "md" | "lg" }) {
   const initials = name.split(" ").filter((w) => /^[A-Za-z]/.test(w)).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
-  return <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-brand/12 text-sm font-semibold text-brand-dark ring-1 ring-brand/15">{initials || "?"}</span>;
+  const dim = size === "lg" ? "size-20 text-2xl" : "size-10 text-sm";
+  if (src) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={src} alt="" className={cn("shrink-0 rounded-full object-cover ring-1 ring-line", dim)} />;
+  }
+  return <span className={cn("flex shrink-0 items-center justify-center rounded-full bg-brand/12 font-semibold text-brand-dark ring-1 ring-brand/15", dim)}>{initials || "?"}</span>;
 }
 
 export function BrandMark({ compact }: { compact?: boolean }) {

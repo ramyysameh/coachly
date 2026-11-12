@@ -153,7 +153,7 @@ test("3. client logs sets, closes the app mid-session, resumes, completes; coach
 });
 
 test("4. coach updates a future workout; the completed workout keeps original targets and results", async () => {
-  await coach.goto(`/coach/clients/${clientId}`);
+  await coach.goto(`/coach/clients/${clientId}?tab=plan`);
   await coach.getByRole("link", { name: "Edit plan" }).click();
   await coach.waitForURL(/\/coach\/plans\//);
   const day = coach.getByRole("region", { name: workoutDay, exact: true });

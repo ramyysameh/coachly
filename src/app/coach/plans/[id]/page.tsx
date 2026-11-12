@@ -1,11 +1,11 @@
 "use client";
 import Link from "next/link";
-import { use, useEffect, useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, ChevronLeft, Info, Plus, Search, Trash2, X } from "lucide-react";
+import { use, useState } from "react";
+import { ArrowDown, ArrowUp, ChevronLeft, Info, Plus, Trash2, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useAsync, must } from "@/lib/useAsync";
 import { PLAN_SELECT, sortPlan, type Exercise, type Plan, type PlanDay, type PlanExercise } from "@/lib/data";
-import { useProfile } from "@/components/AppShell";
+import { ExerciseBrowser, ExerciseThumb, Sheet, useLibrary } from "@/components/ExerciseLibrary";
 import { Badge, Button, Card, Empty, ErrorBox, Field, Input, NumInput, Spinner, Textarea } from "@/components/ui";
 import { cn, errMsg, fmtDate, WEEKDAYS } from "@/lib/utils";
 
@@ -215,6 +215,7 @@ function ExerciseRow({ pe, first, last, write, onMove }: { pe: PlanExercise; fir
   return (
     <li className="p-3">
       <div className="flex items-center gap-1">
+        <ExerciseThumb ex={pe.exercises} className="mr-2 size-10" />
         <p className="flex-1 font-semibold">
           {pe.exercises.name}
           {pe.exercises.is_bodyweight && <span className="ml-1 text-xs font-normal text-muted">bodyweight</span>}
@@ -246,109 +247,12 @@ function IconBtn({ label, onClick, disabled, danger, children }: { label: string
 }
 
 function ExercisePicker({ onClose, onPick }: { onClose: () => void; onPick: (ex: Exercise) => void }) {
-  const supabase = createClient();
-  const { profile } = useProfile();
-  const [q, setQ] = useState("");
-  const [group, setGroup] = useState("All");
-  const [creating, setCreating] = useState(false);
-  const [custom, setCustom] = useState({ name: "", muscle_group: "", equipment: "", is_bodyweight: false });
-  const [err, setErr] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-
-  const { data, loading, error, reload } = useAsync(async () => must(await supabase.from("exercises").select("*").order("name")) as Exercise[], []);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  const groups = useMemo(() => ["All", "Custom", ...Array.from(new Set((data ?? []).map((e) => e.muscle_group).filter(Boolean) as string[])).sort()], [data]);
-  const list = (data ?? []).filter((e) =>
-    (group === "All" || (group === "Custom" ? !!e.created_by : e.muscle_group === group)) &&
-    (!q || `${e.name} ${e.muscle_group ?? ""} ${e.equipment ?? ""}`.toLowerCase().includes(q.toLowerCase())),
-  );
-
-  async function createCustom(e: React.FormEvent) {
-    e.preventDefault();
-    if (!custom.name.trim()) return setErr("Enter an exercise name.");
-    if ((data ?? []).some((x) => x.name.toLowerCase() === custom.name.trim().toLowerCase())) return setErr("An exercise with this name already exists. Search for it above.");
-    setSaving(true);
-    setErr(null);
-    const { data: ex, error } = await supabase
-      .from("exercises")
-      .insert({ name: custom.name.trim(), muscle_group: custom.muscle_group.trim() || null, equipment: custom.equipment.trim() || null, is_bodyweight: custom.is_bodyweight, created_by: profile.id })
-      .select()
-      .single();
-    setSaving(false);
-    if (error) return setErr(errMsg(error));
-    reload({ silent: true });
-    onPick(ex as Exercise);
-  }
-
+  const { data, loading, error, reload } = useLibrary();
   return (
-    <div className="fixed inset-0 z-50 flex animate-fade items-end justify-center bg-slate-950/50 backdrop-blur-[2px] md:items-center" onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Exercise library"
-        className="flex max-h-[90dvh] w-full max-w-lg animate-sheet flex-col rounded-t-3xl border border-line bg-surface shadow-2xl md:rounded-3xl" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
-        <div className="flex items-center justify-between p-4 pb-2">
-          <h2 className="text-lg font-semibold">{creating ? "Custom exercise" : "Exercise library"}</h2>
-          <button onClick={onClose} className="flex size-11 items-center justify-center rounded-xl hover:bg-surface-2" aria-label="Close"><X className="size-5" /></button>
-        </div>
-        {creating ? (
-          <form onSubmit={createCustom} className="space-y-3 overflow-y-auto p-4 pt-0" noValidate>
-            <Field label="Name"><Input autoFocus value={custom.name} onChange={(e) => setCustom({ ...custom, name: e.target.value })} placeholder="e.g. Landmine Press" /></Field>
-            <div className="grid grid-cols-2 gap-2">
-              <Field label="Muscle group"><Input value={custom.muscle_group} onChange={(e) => setCustom({ ...custom, muscle_group: e.target.value })} placeholder="e.g. Shoulders" /></Field>
-              <Field label="Equipment"><Input value={custom.equipment} onChange={(e) => setCustom({ ...custom, equipment: e.target.value })} placeholder="e.g. Barbell" /></Field>
-            </div>
-            <label className="flex min-h-12 items-center gap-3 rounded-xl border border-line px-3">
-              <input type="checkbox" className="size-5 accent-brand" checked={custom.is_bodyweight} onChange={(e) => setCustom({ ...custom, is_bodyweight: e.target.checked })} />
-              Bodyweight exercise (weight optional)
-            </label>
-            {err && <ErrorBox message={err} />}
-            <div className="flex gap-2">
-              <Button type="button" variant="secondary" onClick={() => setCreating(false)}>Back</Button>
-              <Button type="submit" loading={saving} className="flex-1">Create &amp; add</Button>
-            </div>
-          </form>
-        ) : (
-          <>
-            <div className="space-y-2 px-4">
-              <div className="relative">
-                <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted" />
-                <Input autoFocus className="pl-9" placeholder="Search exercises" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search exercises" />
-              </div>
-              <div className="flex gap-1.5 overflow-x-auto pb-1">
-                {groups.map((g) => (
-                  <button key={g} onClick={() => setGroup(g)} className={cn("min-h-9 shrink-0 rounded-full border px-3 text-sm font-medium", g === group ? "border-brand bg-brand text-brand-fg" : "border-line text-muted")}>{g}</button>
-                ))}
-              </div>
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
-              {loading ? <Spinner /> : error ? <ErrorBox message={error} onRetry={reload} /> : list.length === 0 ? (
-                <p className="p-4 text-center text-sm text-muted">No exercises match. Create a custom one below.</p>
-              ) : (
-                <ul>
-                  {list.map((e) => (
-                    <li key={e.id}>
-                      <button onClick={() => onPick(e)} className="flex min-h-12 w-full items-center gap-2 rounded-xl px-3 py-2 text-left hover:bg-surface-2">
-                        <span className="flex-1 font-medium">{e.name}</span>
-                        <span className="text-xs text-muted">{[e.muscle_group, e.equipment].filter(Boolean).join(" · ")}</span>
-                        {e.created_by && <Badge tone="brand">Custom</Badge>}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-            <div className="border-t border-line p-3">
-              <Button variant="secondary" className="w-full" onClick={() => { setCreating(true); setCustom({ ...custom, name: q }); }}>
-                <Plus className="size-4" /> Create custom exercise
-              </Button>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
+    <Sheet title="Exercise library" onClose={onClose}>
+      {loading ? <Spinner /> : error || !data ? <ErrorBox message={error ?? "Couldn't load the library"} onRetry={reload} /> : (
+        <ExerciseBrowser lib={data} onPick={onPick} canCreate compact onCreated={() => reload({ silent: true })} />
+      )}
+    </Sheet>
   );
 }

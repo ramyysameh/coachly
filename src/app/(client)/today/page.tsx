@@ -8,6 +8,7 @@ import { useAsync, must } from "@/lib/useAsync";
 import { getActivePlan, mealTotals, scheduledDay, type Meal, type Session, type Targets } from "@/lib/data";
 import { useProfile } from "@/components/AppShell";
 import { Button, Card, Empty, ErrorBox, Meter, PageHeader, Skeleton } from "@/components/ui";
+import { WeekGlance } from "@/components/TrainingCalendar";
 import { addDays, errMsg, fmtDate, fmtRest, localDate, WEEKDAYS } from "@/lib/utils";
 import { isUnreachable } from "@/lib/supabase/authState";
 
@@ -158,6 +159,8 @@ function TodayInner() {
           </div>
         </Card>
       )}
+
+      <WeekGlance clientId={profile.id} unit={profile.weight_unit} plan={data.plan} />
 
       {/* Nutrition */}
       <Link href="/nutrition" className="block">

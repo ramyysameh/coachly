@@ -2,7 +2,15 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { isoWeekday } from "./utils";
 import { must } from "./useAsync";
 
-export type Exercise = { id: string; name: string; muscle_group: string | null; equipment: string | null; is_bodyweight: boolean; created_by: string | null };
+export type Pattern = "push" | "pull" | "squat" | "hinge" | "lunge" | "carry" | "core" | "isolation";
+export type Movement = { id: string; name: string; pattern: Pattern; created_by: string | null };
+export type Exercise = {
+  id: string; name: string; muscle_group: string | null; equipment: string | null; is_bodyweight: boolean; created_by: string | null;
+  movement_id: string | null; angle: string | null; grip: string | null; unilateral: boolean;
+  primary_muscles: string[]; secondary_muscles: string[]; cues: string[]; mistakes: string[]; image_url: string | null;
+  movements?: Movement | null;
+};
+export const EXERCISE_SELECT = "*, movements(*)";
 export type PlanExercise = {
   id: string; plan_day_id: string; exercise_id: string; position: number;
   target_sets: number; rep_min: number; rep_max: number; rest_seconds: number; notes: string | null;
