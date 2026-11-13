@@ -1,27 +1,30 @@
 "use client";
 import { useMemo, useState } from "react";
-import { ArrowDownRight, ArrowUpRight, CalendarCheck, Dumbbell, Medal, Scale, Target, Trophy } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, CalendarCheck, Dumbbell, Medal, Scale, SlidersHorizontal, Target, Trophy } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useAsync, must } from "@/lib/useAsync";
 import { getActivePlan, type Plan } from "@/lib/data";
 import { buildDays, type CalSession } from "@/lib/calendar";
 import {
-  currentRecords, DEFAULT_TARGET, exerciseOptions, inRange, monthBounds, periodTotals, PR_LABEL, prEvents, setsPerMuscle,
-  strengthSeries, volumeStatus, weekStart, weightWithAverage, type GroupBy, type PeriodTotals, type PrEvent, type SessionRow, type SetRow,
+  currentRecords, DEFAULT_TARGET, exerciseOptions, fmtSets, inRange, monthBounds, periodTotals, PR_LABEL, prEvents, setsPerMuscle,
+  strengthSeries, volumeStatus, weekStart, weightWithAverage, type GroupBy, type MuscleTargets, type PeriodTotals, type PrEvent, type SessionRow, type SetRow,
 } from "@/lib/analytics";
 import { MUSCLES, muscleLabel, type Muscle } from "@/lib/muscles";
 import { BarsChart, TrendChart } from "@/components/Charts";
+import { loadTargets, MuscleTargetsEditor } from "@/components/MuscleHeatMap";
 import { Badge, Button, Card, Empty, ErrorBox, NumInput, Select, Skeleton } from "@/components/ui";
 import { addDays, cn, errMsg, fmtDate, fromKg, localDate, toKg, type Unit } from "@/lib/utils";
 
 type BW = { id: string; entry_date: string; weight_kg: number };
-type Data = { sets: SetRow[]; sessions: (SessionRow & CalSession)[]; plan: Plan | null; bw: BW[]; prs: PrEvent[] };
+type Data = { sets: SetRow[]; sessions: (SessionRow & CalSession)[]; plan: Plan | null; bw: BW[]; prs: PrEvent[]; targets: MuscleTargets };
 
 /**
  * Stats for one client, shared by the coach (client profile → Progress) and the client (Progress page).
  * Everything is calculated from logged sets, sessions and weigh-ins.
  */
-export default function ProgressView({ clientId, unit, canLogWeight, from, to }: { clientId: string; unit: Unit; canLogWeight: boolean; from?: string; to?: string }) {
+export default function ProgressView({ clientId, unit, canLogWeight, canEditTargets = false, from, to }: {
+  clientId: string; unit: Unit; canLogWeight: boolean; canEditTargets?: boolean; from?: string; to?: string;
+}) {
   const supabase = createClient();
   const today = localDate();
   const rangeFrom = from ?? addDays(today, -89);
@@ -30,15 +33,16 @@ export default function ProgressView({ clientId, unit, canLogWeight, from, to }:
   const { data, loading, error, reload } = useAsync(async (): Promise<Data> => {
     // A year of history so records and "previous best" are right even for a short range.
     const histFrom = addDays(rangeFrom < addDays(today, -365) ? rangeFrom : addDays(today, -365), 0);
-    const [sets, sessions, plan, bw] = await Promise.all([
+    const [sets, sessions, plan, bw, targets] = await Promise.all([
       supabase.rpc("completed_sets", { p_client: clientId, p_from: histFrom, p_to: today }),
       supabase.from("workout_sessions").select("id, scheduled_date, name, status, plan_day_id, started_at, completed_at")
         .eq("client_id", clientId).gte("scheduled_date", histFrom).order("scheduled_date"),
       getActivePlan(supabase, clientId),
       supabase.from("body_weights").select("*").eq("client_id", clientId).order("entry_date"),
+      loadTargets(supabase, clientId),
     ]);
     const rows = must(sets) as SetRow[];
-    return { sets: rows, sessions: must(sessions) as Data["sessions"], plan, bw: must(bw) as BW[], prs: prEvents(rows) };
+    return { sets: rows, sessions: must(sessions) as Data["sessions"], plan, bw: must(bw) as BW[], prs: prEvents(rows), targets };
   }, [clientId, rangeFrom, today]);
 
   if (loading) return <div className="space-y-4"><Skeleton className="h-36" /><Skeleton className="h-64" /><Skeleton className="h-64" /></div>;
@@ -50,7 +54,7 @@ export default function ProgressView({ clientId, unit, canLogWeight, from, to }:
       <Consistency data={data} from={rangeFrom} to={rangeTo} today={today} />
       <StrengthProgress data={data} unit={unit} from={rangeFrom} to={rangeTo} />
       <Records data={data} unit={unit} today={today} />
-      <MuscleVolume data={data} today={today} />
+      <MuscleVolume clientId={clientId} data={data} today={today} canEdit={canEditTargets} onSaved={() => reload({ silent: true })} />
       <BodyWeight clientId={clientId} unit={unit} entries={data.bw} canLog={canLogWeight} onSaved={() => reload({ silent: true })} from={rangeFrom} to={rangeTo} />
     </div>
   );
@@ -293,9 +297,12 @@ export function prValue(e: PrEvent, unit: Unit) {
   return `${fromKg(e.value, unit)} ${unit}`;
 }
 
-/** Sets per muscle for a week (primary = 1, secondary = 0.5) against a 10–20 set target. */
-function MuscleVolume({ data, today }: { data: Data; today: string }) {
+/** Sets per muscle for a week (primary = 1, secondary = 0.5) against the client's weekly targets. */
+function MuscleVolume({ clientId, data, today, canEdit, onSaved }: { clientId: string; data: Data; today: string; canEdit: boolean; onSaved: () => void }) {
   const [period, setPeriod] = useState<"last7" | "prev7" | "avg4">("last7");
+  const [editing, setEditing] = useState(false);
+  const targets = data.targets;
+  const custom = MUSCLES.some((m) => targets[m].custom);
   const counts = useMemo(() => {
     if (period === "avg4") {
       const raw = setsPerMuscle(data.sets.filter((s) => inRange(s.performed_on, addDays(today, -27), today)));
@@ -304,8 +311,8 @@ function MuscleVolume({ data, today }: { data: Data; today: string }) {
     const end = period === "last7" ? today : addDays(today, -7);
     return setsPerMuscle(data.sets.filter((s) => inRange(s.performed_on, addDays(end, -6), end)));
   }, [data.sets, period, today]);
-  const rows = MUSCLES.map((m) => ({ m, sets: counts[m], status: volumeStatus(counts[m]) })).sort((a, b) => b.sets - a.sets);
-  const scaleMax = Math.max(DEFAULT_TARGET.max + 4, ...rows.map((r) => r.sets));
+  const rows = MUSCLES.map((m) => ({ m, sets: counts[m], target: targets[m], status: volumeStatus(counts[m], targets[m]) })).sort((a, b) => b.sets - a.sets);
+  const scaleMax = Math.max(DEFAULT_TARGET.max + 4, ...rows.map((r) => Math.max(r.sets, r.target.max + 2)));
   const pct = (v: number) => `${(v / scaleMax) * 100}%`;
   const counts3 = { below: rows.filter((r) => r.status === "below" || r.status === "none").length, within: rows.filter((r) => r.status === "within").length, above: rows.filter((r) => r.status === "above").length };
 
@@ -314,13 +321,16 @@ function MuscleVolume({ data, today }: { data: Data; today: string }) {
       <Header
         icon={<Target />}
         title="Weekly sets per muscle"
-        sub={`Each set counts 1 for primary muscles, 0.5 for secondary. Target ${DEFAULT_TARGET.min}–${DEFAULT_TARGET.max} sets.`}
+        sub={`Each set counts 1 for primary muscles, 0.5 for secondary. ${custom ? "Targets set per muscle by the coach (default 10–20)." : `Target ${DEFAULT_TARGET.min}–${DEFAULT_TARGET.max} sets per muscle.`}`}
         action={
-          <Select value={period} onChange={(e) => setPeriod(e.target.value as typeof period)} aria-label="Period" className="w-auto">
-            <option value="last7">Last 7 days</option>
-            <option value="prev7">7 days before</option>
-            <option value="avg4">4-week average</option>
-          </Select>
+          <div className="flex flex-wrap gap-2">
+            <Select value={period} onChange={(e) => setPeriod(e.target.value as typeof period)} aria-label="Period" className="w-auto">
+              <option value="last7">Last 7 days</option>
+              <option value="prev7">7 days before</option>
+              <option value="avg4">4-week average</option>
+            </Select>
+            {canEdit && <Button size="sm" variant="secondary" onClick={() => setEditing(true)}><SlidersHorizontal className="size-4" /> Set targets</Button>}
+          </div>
         }
       />
       <div className="flex flex-wrap gap-1.5 text-xs">
@@ -330,11 +340,11 @@ function MuscleVolume({ data, today }: { data: Data; today: string }) {
       </div>
       <ul className="space-y-1.5" aria-label="Sets per muscle">
         {rows.map((r) => (
-          <li key={r.m} className="grid grid-cols-[7.5rem_1fr_3.5rem] items-center gap-2 text-sm" title={`${muscleLabel(r.m)}: ${r.sets.toFixed(1)} sets`}>
+          <li key={r.m} className="grid grid-cols-[7.5rem_1fr_3.5rem] items-center gap-2 text-sm" title={`${muscleLabel(r.m)}: ${r.sets.toFixed(1)} sets (target ${fmtSets(r.target.min)}–${fmtSets(r.target.max)})`}>
             <span className="truncate">{muscleLabel(r.m)}</span>
             <span className="relative h-3 rounded-full bg-surface-2">
               {/* target band */}
-              <span className="absolute inset-y-0 rounded-full bg-brand/10 ring-1 ring-brand/20" style={{ left: pct(DEFAULT_TARGET.min), width: pct(DEFAULT_TARGET.max - DEFAULT_TARGET.min) }} aria-hidden />
+              <span className="absolute inset-y-0 rounded-full bg-brand/10 ring-1 ring-brand/20" style={{ left: pct(r.target.min), width: pct(r.target.max - r.target.min) }} aria-hidden />
               {r.sets > 0 && (
                 <span
                   className={cn("absolute inset-y-0.5 left-0 rounded-full", r.status === "above" ? "bg-warn-solid" : r.status === "within" ? "bg-brand" : "bg-muted/50")}
@@ -350,7 +360,8 @@ function MuscleVolume({ data, today }: { data: Data; today: string }) {
           </li>
         ))}
       </ul>
-      <p className="text-[11px] text-muted">Shaded band: target range. Grey bars are under target, teal on track, amber above (possible overload).</p>
+      <p className="text-[11px] text-muted">Shaded band: each muscle&apos;s target range. Grey bars are under target, teal on track, amber above (possible overload).</p>
+      {editing && <MuscleTargetsEditor clientId={clientId} targets={targets} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); onSaved(); }} />}
     </Card>
   );
 }

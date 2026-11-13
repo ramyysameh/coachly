@@ -25,9 +25,11 @@ select pg_temp.demo_user('22222222-2222-2222-2222-222222222222', 'alex@demo.test
 select pg_temp.demo_user('33333333-3333-3333-3333-333333333333', 'sam@demo.test', 'Sam Chen (Sample)', 'client');
 select pg_temp.demo_user('44444444-4444-4444-4444-444444444444', 'coach2@demo.test', 'Other Coach (Sample)', 'coach');
 
-update public.profiles set onboarded = true, goal = 'Build muscle — add 5 kg lean mass (Sample)', weight_unit = 'kg'
+update public.profiles set onboarded = true, goal = 'Build muscle — add 5 kg lean mass (Sample)', weight_unit = 'kg',
+  goal_type = 'muscle_gain', experience_level = 'intermediate'
   where id = '22222222-2222-2222-2222-222222222222';
-update public.profiles set onboarded = true, goal = 'Lose fat and get stronger (Sample)', weight_unit = 'lb'
+update public.profiles set onboarded = true, goal = 'Lose fat and get stronger (Sample)', weight_unit = 'lb',
+  goal_type = 'fat_loss', experience_level = 'beginner'
   where id = '33333333-3333-3333-3333-333333333333';
 
 insert into public.coach_clients (coach_id, client_id, created_at) values
