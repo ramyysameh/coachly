@@ -3,6 +3,8 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Drawer } from "vaul";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui";
+import { errMsg } from "@/lib/utils";
+import { notify } from "@/lib/notify";
 
 type SheetProps = {
   open: boolean;
@@ -100,4 +102,49 @@ export function useSheet<T>() {
       onClosed: () => setState((s) => (s.open ? s : { ...s, item: null })),
     },
   };
+}
+
+type ConfirmSheetProps = {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  title: string;
+  description?: string;
+  confirmLabel: string;
+  tone?: "danger" | "primary";
+  /** Closes the sheet once it resolves. If it throws, the sheet stays open and the error is toasted. */
+  onConfirm: () => Promise<void> | void;
+  onClosed?: () => void;
+};
+
+/** Bottom-sheet confirm for irreversible actions. The confirm button is busy (and disabled) while `onConfirm` runs. */
+export function ConfirmSheet({ open, onOpenChange, title, description, confirmLabel, tone = "danger", onConfirm, onClosed }: ConfirmSheetProps) {
+  const [busy, setBusy] = useState(false);
+  const running = useRef(false); // state lags a fast second tap; the ref does not
+
+  async function run() {
+    if (running.current) return;
+    running.current = true;
+    setBusy(true);
+    try {
+      await onConfirm();
+      onOpenChange(false);
+    } catch (e) {
+      notify.error(errMsg(e));
+    } finally {
+      running.current = false;
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange} title={title} onClosed={onClosed}>
+      <div className="space-y-4">
+        {description && <p className="text-sm text-muted">{description}</p>}
+        <div className="flex flex-col gap-2">
+          <Button size="lg" variant={tone === "danger" ? "danger" : "primary"} className="w-full" loading={busy} onClick={run}>{confirmLabel}</Button>
+          <Button size="lg" variant="secondary" className="w-full" disabled={busy} onClick={() => onOpenChange(false)}>Cancel</Button>
+        </div>
+      </div>
+    </Sheet>
+  );
 }

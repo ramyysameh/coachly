@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useAsync, must } from "@/lib/useAsync";
 import { PLAN_SELECT, sortPlan, type Exercise, type Plan, type PlanDay, type PlanExercise } from "@/lib/data";
 import { ExerciseBrowser, ExerciseThumb, useLibrary } from "@/components/ExerciseLibrary";
-import { Sheet, useSheet } from "@/components/Sheet";
+import { ConfirmSheet, Sheet, useSheet } from "@/components/Sheet";
 import { Badge, Button, Card, Empty, ErrorBox, Field, Input, NumInput, Spinner, Textarea } from "@/components/ui";
 import { cn, errMsg, fmtDate, WEEKDAYS } from "@/lib/utils";
 import { notify } from "@/lib/notify";
@@ -15,6 +15,7 @@ export default function PlanBuilderPage({ params }: { params: Promise<{ id: stri
   const { id } = use(params);
   const supabase = createClient();
   const picker = useSheet<PlanDay>();
+  const deleting = useSheet<PlanDay>();
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState(false);
 
@@ -108,6 +109,7 @@ export default function PlanBuilderPage({ params }: { params: Promise<{ id: stri
           onMove={(dir) => move("plan_days", plan.plan_days, di, dir)}
           onMoveExercise={(i, dir) => move("plan_exercises", day.plan_exercises, i, dir)}
           onAddExercise={() => picker.show(day)}
+          onDelete={() => deleting.show(day)}
         />
       ))}
 
@@ -118,6 +120,17 @@ export default function PlanBuilderPage({ params }: { params: Promise<{ id: stri
       >
         <Plus className="size-4" /> Add workout day
       </Button>
+
+      <ConfirmSheet
+        {...deleting.bind}
+        title="Delete day?"
+        description={deleting.item ? `Delete "${deleting.item.name}" and its exercises? Logged workouts are kept.` : undefined}
+        confirmLabel="Delete day"
+        onConfirm={async () => {
+          const day = deleting.item!;
+          if (!(await write(() => supabase.from("plan_days").delete().eq("id", day.id)))) throw new Error("Couldn't delete the day");
+        }}
+      />
 
       <ExercisePicker
         {...picker.bind}
@@ -144,9 +157,9 @@ export default function PlanBuilderPage({ params }: { params: Promise<{ id: stri
 
 type WriteFn = (fn: () => PromiseLike<{ error: { message: string } | null }>[] | PromiseLike<{ error: { message: string } | null }>) => Promise<boolean>;
 
-function DayCard({ day, first, last, write, onMove, onMoveExercise, onAddExercise }: {
+function DayCard({ day, first, last, write, onMove, onMoveExercise, onAddExercise, onDelete }: {
   day: PlanDay; first: boolean; last: boolean; write: WriteFn;
-  onMove: (dir: -1 | 1) => void; onMoveExercise: (i: number, dir: -1 | 1) => void; onAddExercise: () => void;
+  onMove: (dir: -1 | 1) => void; onMoveExercise: (i: number, dir: -1 | 1) => void; onAddExercise: () => void; onDelete: () => void;
 }) {
   const supabase = createClient();
   function toggleDay(w: number) {
@@ -169,7 +182,7 @@ function DayCard({ day, first, last, write, onMove, onMoveExercise, onAddExercis
         />
         <IconBtn label="Move day up" disabled={first} onClick={() => onMove(-1)}><ArrowUp className="size-4" /></IconBtn>
         <IconBtn label="Move day down" disabled={last} onClick={() => onMove(1)}><ArrowDown className="size-4" /></IconBtn>
-        <IconBtn label="Delete day" danger onClick={() => confirm(`Delete "${day.name}" and its exercises? Logged workouts are kept.`) && write(() => supabase.from("plan_days").delete().eq("id", day.id))}>
+        <IconBtn label="Delete day" danger onClick={onDelete}>
           <Trash2 className="size-4" />
         </IconBtn>
       </div>

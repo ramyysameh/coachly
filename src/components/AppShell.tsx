@@ -8,6 +8,7 @@ import type { Profile } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
 import { notify } from "@/lib/notify";
 import { BrandMark } from "@/components/ui";
+import { ConfirmSheet, useSheet } from "@/components/Sheet";
 import { clearOfflineData } from "@/lib/offline";
 import { flushPendingSets, pendingSetCount } from "@/lib/pendingSets";
 import { flushPendingMeals, pendingMealCount } from "@/lib/pendingMeals";
@@ -50,6 +51,7 @@ export default function AppShell({ profile, children }: { profile: Profile; chil
   const router = useRouter();
   const supabase = createClient();
   const [unread, setUnread] = useState(0);
+  const discard = useSheet<number>();
   const nav = profile.role === "coach" ? coachNav : clientNav;
 
   const refreshUnread = useCallback(async () => {
@@ -115,8 +117,12 @@ export default function AppShell({ profile, children }: { profile: Profile; chil
       await flushPendingSets(supabase);
       await flushPendingMeals(supabase);
       const left = pendingSetCount() + pendingMealCount();
-      if (left && !confirm(`${left} change(s) logged offline haven't synced yet. Logging out now will discard them. Log out anyway?`)) return;
+      if (left) return discard.show(left);
     }
+    await finishSignOut();
+  }
+
+  async function finishSignOut() {
     await clearOfflineData();
     await supabase.auth.signOut();
     router.replace("/login");
@@ -217,6 +223,13 @@ export default function AppShell({ profile, children }: { profile: Profile; chil
           })}
         </nav>
       </div>
+      <ConfirmSheet
+        {...discard.bind}
+        title="Log out and discard changes?"
+        description={`${discard.item ?? 0} change(s) logged offline haven't synced yet. Logging out now will discard them. Log out anyway?`}
+        confirmLabel="Log out"
+        onConfirm={finishSignOut}
+      />
     </ProfileContext.Provider>
   );
 }

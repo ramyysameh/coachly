@@ -7,6 +7,7 @@ import { useProfile } from "@/components/AppShell";
 import { Badge, Button, Card, Empty, ErrorBox, Field, Input, PageHeader, Select, Spinner } from "@/components/ui";
 import { errMsg, fmtDateTime } from "@/lib/utils";
 import { notify } from "@/lib/notify";
+import { ConfirmSheet, useSheet } from "@/components/Sheet";
 
 type Invite = { id: string; token: string; note: string | null; expires_at: string; accepted_at: string | null; revoked: boolean; created_at: string; accepted: { full_name: string } | null };
 
@@ -25,6 +26,7 @@ export default function InvitePage() {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  const revoking = useSheet<string>();
 
   const { data, loading, error: loadError, reload } = useAsync(
     async () =>
@@ -69,9 +71,8 @@ export default function InvitePage() {
   }
 
   async function revoke(id: string) {
-    if (!confirm("Revoke this invite link? It will stop working immediately.")) return;
     const { error } = await supabase.from("invitations").update({ revoked: true }).eq("id", id);
-    if (error) return notify.error(errMsg(error));
+    if (error) throw error;
     reload({ silent: true });
   }
 
@@ -119,7 +120,7 @@ export default function InvitePage() {
                       <Button size="sm" variant="secondary" onClick={() => copy(i.token)}>
                         {copied === i.token ? <><Check className="size-4" /> Copied</> : <><Copy className="size-4" /> Copy</>}
                       </Button>
-                      <Button size="sm" variant="danger" onClick={() => revoke(i.id)}>Revoke</Button>
+                      <Button size="sm" variant="danger" onClick={() => revoking.show(i.id)}>Revoke</Button>
                     </div>
                   )}
                 </li>
@@ -128,6 +129,14 @@ export default function InvitePage() {
           </ul>
         )}
       </section>
+
+      <ConfirmSheet
+        {...revoking.bind}
+        title="Revoke invite?"
+        description="Revoke this invite link? It will stop working immediately."
+        confirmLabel="Revoke"
+        onConfirm={() => revoke(revoking.item!)}
+      />
     </div>
   );
 }

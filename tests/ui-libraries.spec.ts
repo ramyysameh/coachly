@@ -335,3 +335,93 @@ test("set counter and progress bar update on check", async ({ browser }) => {
     await expect.poll(() => flowValue(counterBox)).toBe(before);
   }
 });
+
+// ---- Task 6: ConfirmSheet ----
+async function newTemplate(page: Page, name: string) {
+  await page.goto("/coach/plans");
+  await page.getByLabel("Name").fill(name);
+  await page.getByRole("button", { name: /Create/ }).click();
+  await page.waitForURL("**/coach/plans/*");
+  await page.goto("/coach/plans");
+}
+// Cleanup that is safe whether or not the test got far.
+async function removeTemplateIfPresent(page: Page, name: string) {
+  await page.goto("/coach/plans");
+  const del = page.getByRole("button", { name: `Delete ${name}` });
+  await expect(page.getByRole("heading", { name: "Plan templates" })).toBeVisible();
+  if (await del.count()) {
+    await del.click();
+    await page.getByRole("dialog", { name: "Delete template?" }).getByRole("button", { name: "Delete", exact: true }).click();
+    await expect(page.getByText(name)).toHaveCount(0);
+  }
+}
+
+test("deleting a template asks in a bottom sheet, not a native confirm", async ({ browser }) => {
+  const page = await phone(browser, "coach@demo.test");
+  const name = `Tmp plan ${stamp}`;
+  try {
+    await newTemplate(page, name);
+    const dialogs = trackDialogs(page);
+    await page.getByRole("button", { name: `Delete ${name}` }).click();
+    const sheet = page.getByRole("dialog", { name: "Delete template?" });
+    await sheet.getByRole("button", { name: "Cancel" }).click();
+    await expect(sheet).toHaveCount(0);
+    await expect(page.getByText(name)).toBeVisible();
+    await page.getByRole("button", { name: `Delete ${name}` }).click();
+    await sheet.getByRole("button", { name: "Delete", exact: true }).click();
+    await expect(page.getByText(name)).toHaveCount(0);
+    expect(dialogs).toEqual([]);
+  } finally {
+    await removeTemplateIfPresent(page, name);
+  }
+});
+
+test("confirm runs once on double tap", async ({ browser }) => {
+  const page = await phone(browser, "coach@demo.test");
+  const name = `Dbl plan ${stamp}`;
+  try {
+    await newTemplate(page, name);
+    let deletes = 0;
+    page.on("request", (r) => { if (r.method() === "DELETE" && r.url().includes("/plans")) deletes++; });
+    await page.getByRole("button", { name: `Delete ${name}` }).click();
+    const btn = page.getByRole("dialog", { name: "Delete template?" }).getByRole("button", { name: "Delete", exact: true });
+    await btn.dblclick();
+    await expect(page.getByText(name)).toHaveCount(0);
+    expect(deletes).toBe(1);
+  } finally {
+    await removeTemplateIfPresent(page, name);
+  }
+});
+
+test("deleting a plan day asks in a bottom sheet", async ({ browser }) => {
+  const page = await phone(browser, "coach@demo.test");
+  const name = `Day plan ${stamp}`;
+  try {
+    await page.goto("/coach/plans");
+    await page.getByLabel("Name").fill(name);
+    await page.getByRole("button", { name: /Create/ }).click();
+    await page.waitForURL("**/coach/plans/*"); // lands in the builder with the preset's days
+    const dialogs = trackDialogs(page);
+    const legs = page.getByRole("region", { name: "Legs" });
+    await expect(legs).toBeVisible();
+    await legs.getByRole("button", { name: "Delete day" }).click();
+    const sheet = page.getByRole("dialog", { name: "Delete day?" });
+    await sheet.getByRole("button", { name: "Cancel" }).click();
+    await expect(sheet).toHaveCount(0);
+    await expect(legs).toBeVisible();
+    await legs.getByRole("button", { name: "Delete day" }).click();
+    await sheet.getByRole("button", { name: "Delete day" }).click();
+    await expect(page.getByRole("region", { name: "Legs" })).toHaveCount(0);
+    expect(dialogs).toEqual([]);
+  } finally {
+    await removeTemplateIfPresent(page, name);
+  }
+});
+
+test("logging out with nothing pending shows no sheet", async ({ browser }) => {
+  const page = await phone(browser, "alex@demo.test");
+  const dialogs = trackDialogs(page);
+  await page.getByRole("button", { name: "Log out" }).click();
+  await page.waitForURL("**/login");
+  expect(dialogs).toEqual([]);
+});
