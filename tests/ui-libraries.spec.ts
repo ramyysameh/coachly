@@ -230,14 +230,32 @@ test("Escape closes only the top sheet", async ({ browser }) => {
   await page.keyboard.press("Escape");
   await expect(dialogs).toHaveCount(1);
   await expect(picker).toBeVisible();
+  await expect(picker).toHaveAttribute("data-state", "open");
+});
+
+test("a nested sheet scales the sheet beneath it", async ({ browser }) => {
+  const page = await phone(browser, "coach@demo.test");
+  const picker = await openPicker(page);
+  await picker.getByRole("button", { name: /^About / }).first().click();
+  await expect(page.getByRole("dialog", { includeHidden: true })).toHaveCount(2);
+  // The picker is aria-hidden while the nested sheet is on top, so find it with includeHidden.
+  const under = page.getByRole("dialog", { name: "Exercise library", includeHidden: true });
+  const transform = () => under.evaluate((el) => getComputedStyle(el).transform);
+  await expect.poll(transform).not.toBe("none");
+  await expect.poll(transform).not.toBe("matrix(1, 0, 0, 1, 0, 0)");
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { includeHidden: true })).toHaveCount(1);
 });
 
 test("sheet traps focus and restores it on close", async ({ browser }) => {
   const page = await phone(browser, "coach@demo.test");
   const picker = await openPicker(page);
   await expect(picker).toHaveAttribute("aria-modal", "true");
-  for (let i = 0; i < 25; i++) await page.keyboard.press("Tab");
-  expect(await page.evaluate(() => !!document.activeElement?.closest('[role="dialog"]'))).toBe(true);
+  const inDialog = () => page.evaluate(() => !!document.activeElement?.closest('[role="dialog"]'));
+  await expect.poll(inDialog).toBe(true);
+  // Shift+Tab from the start of the sheet would leave it if focus were not trapped.
+  await page.keyboard.press("Shift+Tab");
+  expect(await inDialog()).toBe(true);
   await page.keyboard.press("Escape");
   await expect(page.getByRole("button", { name: "Add exercise" }).first()).toBeFocused();
 });
@@ -249,4 +267,7 @@ test("calendar day sheet opens as a drawer with a handle", async ({ browser }) =
   const sheet = page.getByRole("dialog");
   await expect(sheet).toBeVisible();
   await expect(sheet.locator("[data-vaul-handle]")).toBeVisible();
+  // The day sheet has only a few focusables: Tab well past its end and focus must still be inside.
+  for (let i = 0; i < 15; i++) await page.keyboard.press("Tab");
+  expect(await page.evaluate(() => !!document.activeElement?.closest('[role="dialog"]'))).toBe(true);
 });

@@ -21,15 +21,21 @@ type SheetProps = {
 export function Sheet({ open, onOpenChange, title, onBack, footer, nested, onClosed, children }: SheetProps) {
   const Root = nested ? Drawer.NestedRoot : Drawer.Root;
   const contentRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const returnFocus = useRef<Element | null>(null);
-  // The drawer's own state. Opening follows `open` straight away; a close coming from the caller
-  // (`open` turning false) is routed through the drawer's close button, so vaul runs its full close:
-  // the exit animation, `onAnimationEnd`, and un-scaling the parent of a nested sheet.
-  const [drawerOpen, setDrawerOpen] = useState(open);
-  if (open && !drawerOpen) setDrawerOpen(true);
+  // The drawer's own state. vaul only runs its open/close side effects (scaling the parent of a nested
+  // sheet, scroll locking, `onAnimationEnd`) for changes it makes itself, so a change of `open` from the
+  // caller is routed through the drawer's own trigger and close button rather than set directly.
+  const [drawerOpen, setDrawerOpen] = useState(false);
   useEffect(() => {
-    if (!open && drawerOpen) closeRef.current?.click();
+    if (open && !drawerOpen) {
+      if (triggerRef.current) triggerRef.current.click();
+      else setDrawerOpen(true);
+    } else if (!open && drawerOpen) {
+      if (closeRef.current) closeRef.current.click();
+      else setDrawerOpen(false);
+    }
   }, [open, drawerOpen]);
 
   return (
@@ -38,6 +44,8 @@ export function Sheet({ open, onOpenChange, title, onBack, footer, nested, onClo
       onOpenChange={(o) => { setDrawerOpen(o); if (o !== open) onOpenChange(o); }}
       onAnimationEnd={(o) => !o && onClosed?.()}
     >
+      {/* Opened from code only (see above); the button the user tapped keeps focus. */}
+      <Drawer.Trigger ref={triggerRef} tabIndex={-1} aria-hidden className="sr-only" />
       <Drawer.Portal>
         <Drawer.Overlay className="fixed inset-0 z-50 bg-slate-950/50" />
         <Drawer.Content
