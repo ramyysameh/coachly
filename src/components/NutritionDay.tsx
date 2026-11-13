@@ -42,10 +42,27 @@ export default function NutritionDay({ clientId, editable }: { clientId: string;
   }, [reload]);
 
   async function remove(m: Meal) {
-    if (!confirm(`Delete "${m.food_name}"?`)) return;
     const res = await saveMealOp(supabase, { op: "delete", id: m.id, client_id: clientId, entry_date: m.entry_date });
-    if (res.error) notify.error(res.error);
+    if (res.error) return notify.error(res.error);
     reload({ silent: true });
+    const row: MealRow = {
+      id: m.id,
+      client_id: m.client_id,
+      entry_date: m.entry_date,
+      meal: m.meal,
+      food_name: m.food_name,
+      serving: m.serving,
+      calories: m.calories,
+      protein_g: m.protein_g,
+      carbs_g: m.carbs_g,
+      fat_g: m.fat_g,
+    };
+    notify.undo(`Deleted "${m.food_name}"`, async () => {
+      const back = await saveMealOp(createClient(), { op: "upsert", row });
+      if (back.error) return notify.error(back.error);
+      // Whichever NutritionDay is mounted (this one may be gone, or on another day) reloads.
+      window.dispatchEvent(new Event("coachly:synced"));
+    });
   }
 
   const totals = mealTotals(data?.meals ?? []);

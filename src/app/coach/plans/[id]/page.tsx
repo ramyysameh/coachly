@@ -214,6 +214,14 @@ function ExerciseRow({ pe, first, last, write, onMove }: { pe: PlanExercise; fir
     if (v !== pe[field]) write(() => supabase.from("plan_exercises").update({ [field]: v }).eq("id", pe.id));
   }
 
+  async function removeExercise() {
+    if (!(await write(() => supabase.from("plan_exercises").delete().eq("id", pe.id)))) return;
+    // The joined exercise is not a plan_exercises column.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { exercises, ...row } = pe;
+    notify.undo("Exercise removed", async () => { await write(() => supabase.from("plan_exercises").insert(row)); });
+  }
+
   const k = `${pe.id}-${pe.target_sets}-${pe.rep_min}-${pe.rep_max}-${pe.rest_seconds}`;
   return (
     <li className="p-3">
@@ -225,7 +233,7 @@ function ExerciseRow({ pe, first, last, write, onMove }: { pe: PlanExercise; fir
         </p>
         <IconBtn label="Move exercise up" disabled={first} onClick={() => onMove(-1)}><ArrowUp className="size-4" /></IconBtn>
         <IconBtn label="Move exercise down" disabled={last} onClick={() => onMove(1)}><ArrowDown className="size-4" /></IconBtn>
-        <IconBtn label="Remove exercise" danger onClick={() => write(() => supabase.from("plan_exercises").delete().eq("id", pe.id))}><X className="size-4" /></IconBtn>
+        <IconBtn label="Remove exercise" danger onClick={removeExercise}><X className="size-4" /></IconBtn>
       </div>
       <div className="mt-2 grid grid-cols-4 gap-2" key={k}>
         <Field label="Sets"><NumInput defaultValue={pe.target_sets} onBlur={(e) => saveNum("target_sets", e.target.value, 1, 20)} /></Field>

@@ -42,13 +42,13 @@ function ClientProfileInner({ id }: { id: string }) {
   }, [id, profile.id]);
 
   async function setStatus(status: "active" | "archived") {
-    if (status === "archived" && !confirm("Archive this client? Their history is kept, but you won't be able to assign plans or message them until restored.")) return;
     setBusy(true);
     const { error } = await supabase.rpc("set_client_status", { p_client: id, p_status: status });
     setBusy(false);
     if (error) return notify.error(errMsg(error));
     reload({ silent: true });
     router.refresh();
+    if (status === "archived") notify.undo("Client archived", () => setStatus("active"));
   }
 
   if (loading) return <Spinner />;
@@ -362,11 +362,15 @@ function NotesTab({ clientId, active }: { clientId: string; active: boolean }) {
     reload({ silent: true });
   }
 
-  async function remove(id: string) {
-    if (!confirm("Delete this note?")) return;
-    const { error } = await supabase.from("coach_notes").delete().eq("id", id);
+  async function remove(n: Note) {
+    const { error } = await supabase.from("coach_notes").delete().eq("id", n.id);
     if (error) return notify.error(errMsg(error));
     reload({ silent: true });
+    notify.undo("Note deleted", async () => {
+      const { error } = await supabase.from("coach_notes").insert({ id: n.id, coach_id: profile.id, client_id: clientId, body: n.body, created_at: n.created_at });
+      if (error) return notify.error(errMsg(error));
+      reload({ silent: true });
+    });
   }
 
   return (
@@ -389,7 +393,7 @@ function NotesTab({ clientId, active }: { clientId: string; active: boolean }) {
                 <p className="whitespace-pre-wrap text-sm">{n.body}</p>
                 <p className="mt-1 text-xs text-muted">{fmtDateTime(n.created_at)}</p>
               </div>
-              <button className="flex size-10 items-center justify-center rounded-xl text-muted hover:bg-danger-bg hover:text-danger" onClick={() => remove(n.id)} aria-label="Delete note"><Trash2 className="size-4" /></button>
+              <button className="flex size-10 items-center justify-center rounded-xl text-muted hover:bg-danger-bg hover:text-danger" onClick={() => remove(n)} aria-label="Delete note"><Trash2 className="size-4" /></button>
             </li>
           ))}
         </ul>
