@@ -425,3 +425,29 @@ test("logging out with nothing pending shows no sheet", async ({ browser }) => {
   await page.waitForURL("**/login");
   expect(dialogs).toEqual([]);
 });
+
+test("a failed day delete shows one toast and keeps the sheet open", async ({ browser }) => {
+  const page = await phone(browser, "coach@demo.test");
+  const name = `Fail plan ${stamp}`;
+  const route = "**/rest/v1/plan_days*";
+  try {
+    await page.goto("/coach/plans");
+    await page.getByLabel("Name").fill(name);
+    await page.getByRole("button", { name: /Create/ }).click();
+    await page.waitForURL("**/coach/plans/*");
+    await expect(page.getByRole("region", { name: "Legs" })).toBeVisible();
+    await page.route(route, (r) => r.request().method() === "DELETE"
+      ? r.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ message: "boom" }) })
+      : r.fallback());
+    await page.getByRole("region", { name: "Legs" }).getByRole("button", { name: "Delete day" }).click();
+    const sheet = page.getByRole("dialog", { name: "Delete day?" });
+    await sheet.getByRole("button", { name: "Delete day" }).click();
+    await expect(toast(page, "boom")).toHaveCount(1);
+    await expect(page.locator("[data-sonner-toast]")).toHaveCount(1);
+    await expect(sheet).toBeVisible();
+    await expect(sheet.getByRole("button", { name: "Delete day" })).toBeEnabled();
+  } finally {
+    await page.unroute(route);
+    await removeTemplateIfPresent(page, name);
+  }
+});

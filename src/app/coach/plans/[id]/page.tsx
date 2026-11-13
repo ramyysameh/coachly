@@ -128,7 +128,11 @@ export default function PlanBuilderPage({ params }: { params: Promise<{ id: stri
         confirmLabel="Delete day"
         onConfirm={async () => {
           const day = deleting.item!;
-          if (!(await write(() => supabase.from("plan_days").delete().eq("id", day.id)))) throw new Error("Couldn't delete the day");
+          // ConfirmSheet toasts a thrown error, so don't go through write() (it toasts too).
+          const { error } = await supabase.from("plan_days").delete().eq("id", day.id);
+          if (error) throw error;
+          setSavedAt(true);
+          await reload({ silent: true });
         }}
       />
 
