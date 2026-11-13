@@ -14,6 +14,7 @@ import TrainingCalendar, { WeekGlance } from "@/components/TrainingCalendar";
 import SessionDetail from "@/components/SessionDetail";
 import { Badge, Button, Card, Empty, ErrorBox, Field, Input, LinkButton, NumInput, Select, Spinner, Tabs, Textarea } from "@/components/ui";
 import { addDays, errMsg, fmtDate, fmtDateTime, localDate, WEEKDAYS, type Unit } from "@/lib/utils";
+import { notify } from "@/lib/notify";
 
 type Client = { id: string; full_name: string; goal: string | null; weight_unit: Unit };
 type Tab = "overview" | "plan" | "workouts" | "nutrition" | "progress" | "notes";
@@ -292,7 +293,7 @@ function TargetsForm({ clientId, active }: { clientId: string; active: boolean }
   const { profile } = useProfile();
   const [f, setF] = useState<Record<string, string> | null>(null);
   const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
   const { loading, error, reload } = useAsync(async () => {
     const t = must(await supabase.from("nutrition_targets").select("*").eq("client_id", clientId).maybeSingle()) as Targets | null;
     setF({ calories: String(t?.calories ?? ""), protein_g: String(t?.protein_g ?? ""), carbs_g: String(t?.carbs_g ?? ""), fat_g: String(t?.fat_g ?? "") });
@@ -304,13 +305,15 @@ function TargetsForm({ clientId, active }: { clientId: string; active: boolean }
     if (!f) return;
     const vals = Object.fromEntries(Object.entries(f).map(([k, v]) => [k, Number(v)]));
     if (Object.values(f).some((v) => v.trim() === "") || Object.values(vals).some((v) => !Number.isInteger(v) || v < 0)) {
-      return setMsg({ ok: false, text: "Enter whole numbers (0 or more) for every target." });
+      return setMsg("Enter whole numbers (0 or more) for every target.");
     }
-    if (vals.calories > 20000 || vals.protein_g > 2000 || vals.carbs_g > 2000 || vals.fat_g > 2000) return setMsg({ ok: false, text: "One of the targets looks too high." });
+    if (vals.calories > 20000 || vals.protein_g > 2000 || vals.carbs_g > 2000 || vals.fat_g > 2000) return setMsg("One of the targets looks too high.");
     setSaving(true);
     const { error } = await supabase.from("nutrition_targets").upsert({ client_id: clientId, ...vals, updated_by: profile.id, updated_at: new Date().toISOString() });
     setSaving(false);
-    setMsg(error ? { ok: false, text: errMsg(error) } : { ok: true, text: "Targets saved." });
+    if (error) return setMsg(errMsg(error));
+    setMsg(null);
+    notify.success("Targets saved.");
   }
 
   if (loading || !f) return <Spinner />;
@@ -327,7 +330,7 @@ function TargetsForm({ clientId, active }: { clientId: string; active: boolean }
           <Field label="Carbs (g)"><NumInput value={f.carbs_g} onChange={set("carbs_g")} disabled={!active} /></Field>
           <Field label="Fat (g)"><NumInput value={f.fat_g} onChange={set("fat_g")} disabled={!active} /></Field>
         </div>
-        {msg && <p className={`text-sm ${msg.ok ? "text-brand-dark" : "text-danger"}`} role="status">{msg.text}</p>}
+        {msg && <p className="text-sm text-danger" role="status">{msg}</p>}
         {active && <Button type="submit" loading={saving}>Save targets</Button>}
       </form>
     </Card>
