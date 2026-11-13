@@ -8,6 +8,7 @@ import { PLAN_SELECT, sortPlan, type Exercise, type Plan, type PlanDay, type Pla
 import { ExerciseBrowser, ExerciseThumb, Sheet, useLibrary } from "@/components/ExerciseLibrary";
 import { Badge, Button, Card, Empty, ErrorBox, Field, Input, NumInput, Spinner, Textarea } from "@/components/ui";
 import { cn, errMsg, fmtDate, WEEKDAYS } from "@/lib/utils";
+import { notify } from "@/lib/notify";
 
 export default function PlanBuilderPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -31,7 +32,7 @@ export default function PlanBuilderPage({ params }: { params: Promise<{ id: stri
     setSaveError(null);
     const results = await Promise.all([fn()].flat());
     const failed = results.find((r) => r.error);
-    if (failed?.error) setSaveError(errMsg(failed.error));
+    if (failed?.error) notify.error(errMsg(failed.error));
     else setSavedAt(true);
     await reload({ silent: true });
     return !failed;

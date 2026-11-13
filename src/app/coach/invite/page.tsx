@@ -6,6 +6,7 @@ import { useAsync, must } from "@/lib/useAsync";
 import { useProfile } from "@/components/AppShell";
 import { Badge, Button, Card, Empty, ErrorBox, Field, Input, PageHeader, Select, Spinner } from "@/components/ui";
 import { errMsg, fmtDateTime } from "@/lib/utils";
+import { notify } from "@/lib/notify";
 
 type Invite = { id: string; token: string; note: string | null; expires_at: string; accepted_at: string | null; revoked: boolean; created_at: string; accepted: { full_name: string } | null };
 
@@ -61,15 +62,16 @@ export default function InvitePage() {
       await navigator.clipboard.writeText(link(token));
       setCopied(token);
       setTimeout(() => setCopied(null), 2000);
+      notify.success("Invite link copied");
     } catch {
-      prompt("Copy this invite link:", link(token));
+      notify.error("Couldn't copy. Long-press to copy:", { description: link(token) });
     }
   }
 
   async function revoke(id: string) {
     if (!confirm("Revoke this invite link? It will stop working immediately.")) return;
     const { error } = await supabase.from("invitations").update({ revoked: true }).eq("id", id);
-    if (error) return alert(errMsg(error));
+    if (error) return notify.error(errMsg(error));
     reload({ silent: true });
   }
 

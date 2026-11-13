@@ -6,6 +6,7 @@ import { useAsync, must } from "@/lib/useAsync";
 import { MEALS, mealTotals, type Meal, type Targets } from "@/lib/data";
 import { Button, Card, Empty, ErrorBox, Field, Input, Meter, NumInput, Select, Spinner } from "@/components/ui";
 import { addDays, fmtDate, localDate } from "@/lib/utils";
+import { notify } from "@/lib/notify";
 import { isUnreachable } from "@/lib/supabase/authState";
 import { flushPendingMeals, saveMealOp, withPendingMeals, type MealRow } from "@/lib/pendingMeals";
 
@@ -43,7 +44,7 @@ export default function NutritionDay({ clientId, editable }: { clientId: string;
   async function remove(m: Meal) {
     if (!confirm(`Delete "${m.food_name}"?`)) return;
     const res = await saveMealOp(supabase, { op: "delete", id: m.id, client_id: clientId, entry_date: m.entry_date });
-    if (res.error) alert(res.error);
+    if (res.error) notify.error(res.error);
     reload({ silent: true });
   }
 

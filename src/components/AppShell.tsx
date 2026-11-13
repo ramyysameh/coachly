@@ -6,6 +6,7 @@ import { BarChart3, BookOpen, CalendarCheck, ClipboardList, Dumbbell, LayoutDash
 import { createClient } from "@/lib/supabase/client";
 import type { Profile } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
+import { notify } from "@/lib/notify";
 import { BrandMark } from "@/components/ui";
 import { clearOfflineData } from "@/lib/offline";
 import { flushPendingSets, pendingSetCount } from "@/lib/pendingSets";
@@ -87,7 +88,10 @@ export default function AppShell({ profile, children }: { profile: Profile; chil
         await flushPendingSets(supabase);
         await flushPendingMeals(supabase);
         const after = pendingSetCount() + pendingMealCount();
-        if (after < before) window.dispatchEvent(new Event("coachly:synced"));
+        if (after < before) {
+          window.dispatchEvent(new Event("coachly:synced"));
+          notify.success(`${before - after} offline change(s) synced`);
+        }
       }
       setPending(pendingSetCount() + pendingMealCount());
       busy = false;

@@ -46,7 +46,7 @@ function ClientProfileInner({ id }: { id: string }) {
     setBusy(true);
     const { error } = await supabase.rpc("set_client_status", { p_client: id, p_status: status });
     setBusy(false);
-    if (error) return alert(errMsg(error));
+    if (error) return notify.error(errMsg(error));
     reload({ silent: true });
     router.refresh();
   }
@@ -365,7 +365,7 @@ function NotesTab({ clientId, active }: { clientId: string; active: boolean }) {
   async function remove(id: string) {
     if (!confirm("Delete this note?")) return;
     const { error } = await supabase.from("coach_notes").delete().eq("id", id);
-    if (error) return alert(errMsg(error));
+    if (error) return notify.error(errMsg(error));
     reload({ silent: true });
   }
 

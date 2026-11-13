@@ -18,9 +18,8 @@ async function openFirstTemplate(page: Page) {
   await page.locator('a[href^="/coach/plans/"]').first().click();
   await page.waitForURL("**/coach/plans/*");
 }
-// stamp and openFirstTemplate are used by later tasks in this plan
+// stamp is used by later tasks in this plan
 void stamp;
-void openFirstTemplate;
 
 test("profile save shows a toast that survives the redirect", async ({ browser }) => {
   const page = await phone(browser, "alex@demo.test");
@@ -38,4 +37,20 @@ test("coach target save toasts and keeps the acceptance copy", async ({ browser 
   await page.goto("/coach/clients/22222222-2222-2222-2222-222222222222?tab=nutrition");
   await page.getByRole("button", { name: "Save targets" }).click();
   await expect(toast(page, "Targets saved.")).toBeVisible();
+});
+
+test("copying an invite link toasts", async ({ browser }) => {
+  const page = await phone(browser, "coach@demo.test");
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.goto("/coach/invite");
+  await page.getByRole("button", { name: /Create & copy link/ }).click();
+  await expect(toast(page, "Invite link copied")).toBeVisible();
+});
+
+test("a failed plan autosave toasts instead of an off-screen box", async ({ browser }) => {
+  const page = await phone(browser, "coach@demo.test");
+  await openFirstTemplate(page);
+  await page.route("**/rest/v1/plan_days**", (r) => r.fulfill({ status: 500, body: '{"message":"boom"}' }));
+  await page.getByRole("button", { name: "Add workout day" }).click();
+  await expect(toast(page, /boom|Something went wrong/)).toBeVisible();
 });

@@ -8,6 +8,7 @@ import { useAsync, must } from "@/lib/useAsync";
 import { useProfile } from "@/components/AppShell";
 import { Button, Card, Empty, ErrorBox, Field, Input, PageHeader, Select, Spinner } from "@/components/ui";
 import { errMsg, WEEKDAYS } from "@/lib/utils";
+import { notify } from "@/lib/notify";
 
 type Row = { id: string; name: string; description: string | null; plan_days: { name: string; weekdays: number[]; plan_exercises: { id: string }[] }[] };
 
@@ -51,14 +52,15 @@ export default function PlansPage() {
 
   async function duplicate(r: Row) {
     const { data: id, error } = await supabase.rpc("copy_plan", { p_source: r.id, p_name: `${r.name} (copy)` });
-    if (error) return alert(errMsg(error));
+    if (error) return notify.error(errMsg(error));
+    notify.success("Template duplicated");
     router.push(`/coach/plans/${id}`);
   }
 
   async function remove(r: Row) {
     if (!confirm(`Delete template "${r.name}"? Plans already assigned to clients are not affected.`)) return;
     const { error } = await supabase.from("plans").delete().eq("id", r.id);
-    if (error) return alert(errMsg(error));
+    if (error) return notify.error(errMsg(error));
     reload({ silent: true });
   }
 
