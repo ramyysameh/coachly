@@ -38,9 +38,10 @@ Reset the database (re-runs migrations and seed): `npx supabase db reset`.
 
 - **Live app:** https://coachly-gules.vercel.app (Vercel project `coachly`, region `fra1`). Every push to `master` deploys automatically; other branches get preview URLs.
 - **Database/auth:** Supabase project `coachly` (`kvlwmpfzgkdopjjlcswi`, Central EU / Frankfurt). No demo data is loaded there.
-- **Env vars on Vercel:** `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` (the publishable key). `NEXT_PUBLIC_SHOW_DEMO_LOGINS` is intentionally unset.
+- **Env vars on Vercel:** `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` (the publishable key), and `SUPABASE_DB_URL` (Production only, see below). `NEXT_PUBLIC_SHOW_DEMO_LOGINS` is intentionally unset.
 - **Auth URLs:** site URL is the live app; redirects allowed for the live app, Vercel previews and `http://localhost:3000`.
-- **New migrations:** run `npx supabase link --project-ref kvlwmpfzgkdopjjlcswi` once, then `npx supabase db push`. Applied migrations are recorded in `supabase_migrations.schema_migrations`.
+- **New migrations apply automatically.** `npm run build` first runs `scripts/migrate-on-deploy.mjs`: on Vercel production builds it runs `supabase db push` against `SUPABASE_DB_URL`, so the database is migrated before the new code goes live. If a migration fails, the build fails and the current deployment stays live. Preview and local builds skip it. `SUPABASE_DB_URL` is the **Session pooler** connection string from Supabase → Connect (IPv4; Vercel can't reach the IPv6-only direct connection). Never commit it — the repository is public.
+- **Manual fallback:** `npx supabase link --project-ref kvlwmpfzgkdopjjlcswi` once, then `npx supabase db push --remote`. Applied migrations are recorded in `supabase_migrations.schema_migrations`.
 
 ## Demo accounts (sample data)
 
