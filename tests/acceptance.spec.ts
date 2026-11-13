@@ -199,7 +199,7 @@ test("5. client logs and edits a meal; totals update and the coach sees the revi
   await dialog.getByLabel("Fat g").fill("15");
   await dialog.getByRole("button", { name: "Add food" }).click();
   await expect(cli.getByText("Test chicken bowl")).toBeVisible();
-  await expect(cli.getByText(/^600$/).first()).toBeVisible(); // calories total
+  await expect(cli.getByRole("progressbar", { name: "Calories" })).toHaveAttribute("aria-valuenow", "600"); // calories total (NumberFlow digits are not plain text)
 
   await cli.getByRole("button", { name: "Edit Test chicken bowl" }).click();
   const edit = cli.getByRole("dialog", { name: "Edit food" });
@@ -207,7 +207,7 @@ test("5. client logs and edits a meal; totals update and the coach sees the revi
   await edit.getByLabel("Calories (kcal)").fill("750");
   await edit.getByRole("button", { name: "Save changes" }).click();
   await expect(cli.getByText("Test chicken bowl (large)")).toBeVisible();
-  await expect(cli.getByText(/^750$/).first()).toBeVisible();
+  await expect(cli.getByRole("progressbar", { name: "Calories" })).toHaveAttribute("aria-valuenow", "750");
 
   await coach.goto(`/coach/clients/${clientId}?tab=nutrition`);
   await coach.getByRole("textbox", { name: "Calories", exact: true }).fill("2400");

@@ -1,6 +1,7 @@
 "use client";
 import { use, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import NumberFlow from "@number-flow/react";
 import { useRouter } from "next/navigation";
 import { Check, ChevronLeft, Minus, Plus, Timer, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -86,14 +87,17 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-xl font-semibold">{session.name}</h1>
           <p className="text-xs text-muted">
-            {fmtDate(session.scheduled_date)} · {doneSets}/{allSets.length} sets
+            {fmtDate(session.scheduled_date)} · <NumberFlow value={doneSets} />/{allSets.length} sets
           </p>
         </div>
         {completed ? <Badge tone="brand">Completed</Badge> : <Badge tone="warn">In progress</Badge>}
       </div>
 
       <div className="h-1.5 overflow-hidden rounded-full bg-line" aria-hidden>
-        <div className="h-full bg-brand transition-all" style={{ width: `${allSets.length ? (doneSets / allSets.length) * 100 : 0}%` }} />
+        <div
+          className="h-full w-full origin-left bg-brand transition-transform duration-300 ease-out"
+          style={{ transform: `scaleX(${allSets.length ? doneSets / allSets.length : 0})` }}
+        />
       </div>
 
       {completed && (

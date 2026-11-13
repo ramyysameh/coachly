@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight, Pencil, Plus, Salad, Trash2 } from "lucide-r
 import { createClient } from "@/lib/supabase/client";
 import { useAsync, must } from "@/lib/useAsync";
 import { MEALS, mealTotals, type Meal, type Targets } from "@/lib/data";
+import NumberFlow from "@number-flow/react";
 import { Sheet, useSheet } from "@/components/Sheet";
 import { Button, Card, Empty, ErrorBox, Field, Input, Meter, NumInput, Select, Spinner } from "@/components/ui";
 import { addDays, fmtDate, localDate } from "@/lib/utils";
@@ -116,7 +117,7 @@ export default function NutritionDay({ clientId, editable }: { clientId: string;
               <section key={meal} className="rounded-2xl border border-line bg-surface">
                 <div className="flex items-center justify-between px-4 py-2.5">
                   <h3 className="font-semibold capitalize">{meal}</h3>
-                  <span className="text-xs text-muted tabular-nums">{Math.round(t.calories)} kcal</span>
+                  <span className="text-xs text-muted tabular-nums"><NumberFlow value={Math.round(t.calories)} suffix=" kcal" /></span>
                 </div>
                 {items.length > 0 && (
                   <ul className="divide-y divide-line border-t border-line">

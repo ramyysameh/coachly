@@ -284,3 +284,54 @@ test("submit stays on screen with the keyboard field focused", async ({ browser 
   await page.keyboard.press("Escape");
   await expect(d).toHaveCount(0);
 });
+
+// NumberFlow sets role="img" + aria-label through ElementInternals, which Playwright's getByRole cannot see.
+// Its shadow DOM does reach the aria snapshot as separate digits ("1 0 0 /2900 kcal"), so read the number
+// that sits right before the "/target" in the scope.
+async function flowValue(scope: ReturnType<Page["locator"]>) {
+  const snap = await scope.ariaSnapshot();
+  const digits = snap.match(/(\d(?:[\d,]| \d)*) \//)?.[1];
+  return Number(digits?.replace(/[ ,]/g, "") ?? NaN);
+}
+
+test("calorie meter number animates to the new total", async ({ browser }) => {
+  const page = await phone(browser, "alex@demo.test");
+  const name = `Flow pear ${stamp}`;
+  try {
+    await page.goto("/nutrition");
+    const meter = page.getByRole("progressbar", { name: "Calories" }).locator("xpath=..");
+    const before = await flowValue(meter);
+    await addMeal(page, name); // +100 kcal
+    await expect.poll(() => flowValue(meter)).toBe(before + 100);
+  } finally {
+    await removeMealIfPresent(page, name);
+  }
+});
+
+test("set counter and progress bar update on check", async ({ browser }) => {
+  const page = await phone(browser, "alex@demo.test");
+  await page.goto("/training");
+  await page.getByRole("tab", { name: "History" }).click(); // session links live under History
+  await page.locator('a[href^="/training/session/"]').first().click();
+  const counterBox = page.locator("h1 + p");
+  const bar = page.locator('div[aria-hidden="true"] > div.origin-left');
+  await expect(counterBox).toContainText("sets");
+  const before = await flowValue(counterBox);
+  const total = Number((await counterBox.innerText()).match(/\/(\d+) sets/)![1]);
+  // The seeded session is already completed: un-check one set and re-check it, so the data ends unchanged.
+  const done = page.getByRole("button", { name: /^Mark set \d+ not done/ }).first();
+  const n = (await done.getAttribute("aria-label"))!.match(/\d+/)![0];
+  const scale = async () => (await bar.evaluate((el) => getComputedStyle(el).transform)).replace(/^matrix\(([^,]+),.*$/, "$1");
+  try {
+    await done.click();
+    await expect.poll(() => flowValue(counterBox)).toBe(before - 1);
+    await expect.poll(async () => Number(await scale())).toBeCloseTo((before - 1) / total, 2);
+    await page.getByRole("button", { name: `Complete set ${n}` }).click();
+    await expect.poll(() => flowValue(counterBox)).toBe(before);
+    await expect.poll(async () => Number(await scale())).toBeCloseTo(before / total, 2);
+  } finally {
+    const check = page.getByRole("button", { name: `Complete set ${n}` });
+    if (await check.count()) await check.click(); // the set keeps its reps and weight, so this restores it
+    await expect.poll(() => flowValue(counterBox)).toBe(before);
+  }
+});
