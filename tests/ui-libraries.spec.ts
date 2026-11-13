@@ -18,6 +18,7 @@ async function openFirstTemplate(page: Page) {
   await page.locator('a[href^="/coach/plans/"]').first().click();
   await page.waitForURL("**/coach/plans/*");
 }
+// stamp and openFirstTemplate are used by later tasks in this plan
 void stamp;
 void openFirstTemplate;
 

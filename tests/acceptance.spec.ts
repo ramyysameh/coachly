@@ -88,7 +88,7 @@ test("2. coach assigns a split; the correct workout appears on the client's Toda
   await expect(coach.getByText(`Assigned to ${client.name}`)).toBeVisible();
 
   // Find the day scheduled today; on Sunday (unscheduled in the template) schedule Push.
-  const days = coach.locator("section[aria-label]");
+  const days = coach.locator("main section[aria-label]");
   const n = await days.count();
   for (let i = 0; i < n; i++) {
     const pressed = await days.nth(i).getByRole("button", { name: WEEKDAYS[todayIso - 1], exact: true }).getAttribute("aria-pressed");
@@ -109,7 +109,7 @@ test("3. client logs sets, closes the app mid-session, resumes, completes; coach
   await cli.getByRole("button", { name: "Start Workout" }).click();
   await cli.waitForURL(/\/training\/session\//);
   const sessionUrl = cli.url();
-  const first = cli.locator("section[aria-label]").first();
+  const first = cli.locator("main section[aria-label]").first();
   firstExercise = (await first.getAttribute("aria-label"))!;
   originalTarget = (await first.locator("h2 + span").textContent())!.split("·")[0].trim(); // e.g. "4 × 5-8"
 
@@ -133,7 +133,7 @@ test("3. client logs sets, closes the app mid-session, resumes, completes; coach
   await cli.goto("/today");
   await cli.getByRole("button", { name: "Resume workout" }).click();
   await cli.waitForURL(sessionUrl);
-  const again = cli.locator("section[aria-label]").first();
+  const again = cli.locator("main section[aria-label]").first();
   await expect(again.getByLabel("Set 1 weight in lb")).toHaveValue("135");
   await expect(again.getByLabel("Set 1 reps")).toHaveValue("8");
   await expect(again.getByRole("button", { name: "Mark set 2 not done" })).toBeVisible();
@@ -171,7 +171,7 @@ test("4. coach updates a future workout; the completed workout keeps original ta
   await cli.goto("/training");
   await cli.getByRole("tab", { name: "History" }).click();
   await cli.getByRole("link", { name: new RegExp(workoutDay) }).first().click();
-  const first = cli.locator("section[aria-label]").first();
+  const first = cli.locator("main section[aria-label]").first();
   await expect(first).toContainText(originalTarget);
   await expect(first.getByLabel("Set 1 weight in lb")).toHaveValue("135");
 
