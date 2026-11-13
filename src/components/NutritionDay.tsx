@@ -1,9 +1,10 @@
 "use client";
 import { useEffect, useState } from "react";
-import { ChevronLeft, ChevronRight, Pencil, Plus, Salad, Trash2, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Pencil, Plus, Salad, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useAsync, must } from "@/lib/useAsync";
 import { MEALS, mealTotals, type Meal, type Targets } from "@/lib/data";
+import { Sheet, useSheet } from "@/components/Sheet";
 import { Button, Card, Empty, ErrorBox, Field, Input, Meter, NumInput, Select, Spinner } from "@/components/ui";
 import { addDays, fmtDate, localDate } from "@/lib/utils";
 import { notify } from "@/lib/notify";
@@ -14,7 +15,8 @@ import { flushPendingMeals, saveMealOp, withPendingMeals, type MealRow } from "@
 export default function NutritionDay({ clientId, editable }: { clientId: string; editable: boolean }) {
   const supabase = createClient();
   const [date, setDate] = useState(localDate());
-  const [editing, setEditing] = useState<Partial<Meal> | null>(null);
+  const editing = useSheet<Partial<Meal>>();
+  const [saving, setSaving] = useState(false);
 
   const { data, loading, error, reload } = useAsync(async () => {
     if (editable) await flushPendingMeals(supabase);
@@ -131,7 +133,7 @@ export default function NutritionDay({ clientId, editable }: { clientId: string;
                         </div>
                         {editable && (
                           <>
-                            <button className="flex size-11 items-center justify-center rounded-xl text-muted hover:bg-surface-2" onClick={() => setEditing(m)} aria-label={`Edit ${m.food_name}`}>
+                            <button className="flex size-11 items-center justify-center rounded-xl text-muted hover:bg-surface-2" onClick={() => editing.show(m)} aria-label={`Edit ${m.food_name}`}>
                               <Pencil className="size-4" />
                             </button>
                             <button className="flex size-11 items-center justify-center rounded-xl text-danger hover:bg-danger-bg" onClick={() => remove(m)} aria-label={`Delete ${m.food_name}`}>
@@ -144,7 +146,7 @@ export default function NutritionDay({ clientId, editable }: { clientId: string;
                   </ul>
                 )}
                 {editable && (
-                  <button className="flex min-h-12 w-full items-center gap-2 border-t border-line px-4 text-sm font-semibold text-brand" onClick={() => setEditing({ meal, entry_date: date })}>
+                  <button className="flex min-h-12 w-full items-center gap-2 border-t border-line px-4 text-sm font-semibold text-brand" onClick={() => editing.show({ meal, entry_date: date })}>
                     <Plus className="size-4" /> Add food
                   </button>
                 )}
@@ -154,22 +156,33 @@ export default function NutritionDay({ clientId, editable }: { clientId: string;
         </>
       )}
 
-      {editing && (
-        <MealForm
-          clientId={clientId}
-          initial={editing}
-          onClose={() => setEditing(null)}
-          onSaved={() => {
-            setEditing(null);
-            reload({ silent: true });
-          }}
-        />
-      )}
+      <Sheet
+        {...editing.bind}
+        title={editing.item?.id ? "Edit food" : "Add food"}
+        initialFocus="input"
+        footer={
+          <Button type="submit" form="meal-form" loading={saving} size="lg" className="w-full">
+            {editing.item?.id ? "Save changes" : "Add food"}
+          </Button>
+        }
+      >
+        {editing.item && (
+          <MealForm
+            clientId={clientId}
+            initial={editing.item}
+            onSavingChange={setSaving}
+            onSaved={() => {
+              editing.close();
+              reload({ silent: true });
+            }}
+          />
+        )}
+      </Sheet>
     </div>
   );
 }
 
-function MealForm({ clientId, initial, onClose, onSaved }: { clientId: string; initial: Partial<Meal>; onClose: () => void; onSaved: () => void }) {
+function MealForm({ clientId, initial, onSavingChange, onSaved }: { clientId: string; initial: Partial<Meal>; onSavingChange: (saving: boolean) => void; onSaved: () => void }) {
   const supabase = createClient();
   const [f, setF] = useState({
     meal: initial.meal ?? "breakfast",
@@ -182,13 +195,7 @@ function MealForm({ clientId, initial, onClose, onSaved }: { clientId: string; i
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  const setSaving = onSavingChange;
 
   const num = (s: string) => (s.trim() === "" ? 0 : Number(s.replace(",", ".")));
 
@@ -231,42 +238,27 @@ function MealForm({ clientId, initial, onClose, onSaved }: { clientId: string; i
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setF({ ...f, [k]: e.target.value });
 
   return (
-    <div className="fixed inset-0 z-50 flex animate-fade items-end justify-center bg-slate-950/50 backdrop-blur-[2px] md:items-center" onClick={onClose}>
-      <form
-        onSubmit={save}
-        noValidate
-        onClick={(e) => e.stopPropagation()}
-        className="max-h-[92dvh] w-full max-w-md animate-sheet space-y-3 overflow-y-auto rounded-t-3xl border border-line bg-surface p-5 shadow-2xl md:rounded-3xl"
-        style={{ paddingBottom: "calc(1.25rem + env(safe-area-inset-bottom))" }}
-        role="dialog"
-        aria-label={initial.id ? "Edit food" : "Add food"}
-      >
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">{initial.id ? "Edit food" : "Add food"}</h2>
-          <button type="button" onClick={onClose} className="flex size-11 items-center justify-center rounded-xl hover:bg-surface-2" aria-label="Close"><X className="size-5" /></button>
-        </div>
-        {error && <ErrorBox message={error} />}
-        <Field label="Meal">
-          <Select value={f.meal} onChange={set("meal")}>
-            {MEALS.map((m) => <option key={m} value={m} className="capitalize">{m[0].toUpperCase() + m.slice(1)}</option>)}
-          </Select>
-        </Field>
-        <Field label="Food" error={errors.food_name}>
-          <Input value={f.food_name} onChange={set("food_name")} placeholder="e.g. Chicken breast" autoFocus />
-        </Field>
-        <Field label="Serving size" error={errors.serving}>
-          <Input value={f.serving} onChange={set("serving")} placeholder="e.g. 150 g" />
-        </Field>
-        <Field label="Calories (kcal)" error={errors.calories}>
-          <NumInput decimal value={f.calories} onChange={set("calories")} />
-        </Field>
-        <div className="grid grid-cols-3 gap-2">
-          <Field label="Protein g" error={errors.protein_g}><NumInput decimal value={f.protein_g} onChange={set("protein_g")} /></Field>
-          <Field label="Carbs g" error={errors.carbs_g}><NumInput decimal value={f.carbs_g} onChange={set("carbs_g")} /></Field>
-          <Field label="Fat g" error={errors.fat_g}><NumInput decimal value={f.fat_g} onChange={set("fat_g")} /></Field>
-        </div>
-        <Button type="submit" loading={saving} size="lg" className="w-full">{initial.id ? "Save changes" : "Add food"}</Button>
-      </form>
-    </div>
+    <form id="meal-form" onSubmit={save} noValidate className="space-y-3">
+      {error && <ErrorBox message={error} />}
+      <Field label="Meal">
+        <Select value={f.meal} onChange={set("meal")}>
+          {MEALS.map((m) => <option key={m} value={m} className="capitalize">{m[0].toUpperCase() + m.slice(1)}</option>)}
+        </Select>
+      </Field>
+      <Field label="Food" error={errors.food_name}>
+        <Input value={f.food_name} onChange={set("food_name")} placeholder="e.g. Chicken breast" />
+      </Field>
+      <Field label="Serving size" error={errors.serving}>
+        <Input value={f.serving} onChange={set("serving")} placeholder="e.g. 150 g" />
+      </Field>
+      <Field label="Calories (kcal)" error={errors.calories}>
+        <NumInput decimal value={f.calories} onChange={set("calories")} />
+      </Field>
+      <div className="grid grid-cols-3 gap-2">
+        <Field label="Protein g" error={errors.protein_g}><NumInput decimal value={f.protein_g} onChange={set("protein_g")} /></Field>
+        <Field label="Carbs g" error={errors.carbs_g}><NumInput decimal value={f.carbs_g} onChange={set("carbs_g")} /></Field>
+        <Field label="Fat g" error={errors.fat_g}><NumInput decimal value={f.fat_g} onChange={set("fat_g")} /></Field>
+      </div>
+    </form>
   );
 }

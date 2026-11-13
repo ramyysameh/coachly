@@ -271,3 +271,16 @@ test("calendar day sheet opens as a drawer with a handle", async ({ browser }) =
   for (let i = 0; i < 15; i++) await page.keyboard.press("Tab");
   expect(await page.evaluate(() => !!document.activeElement?.closest('[role="dialog"]'))).toBe(true);
 });
+
+test("submit stays on screen with the keyboard field focused", async ({ browser }) => {
+  const page = await phone(browser, "alex@demo.test");
+  await page.goto("/nutrition");
+  await page.locator("main section", { hasText: "Snack" }).getByRole("button", { name: "Add food" }).click();
+  const d = page.getByRole("dialog", { name: "Add food" });
+  await expect(d.locator("[data-vaul-handle]")).toBeVisible();
+  await expect(d.getByLabel("Food")).toBeFocused();
+  await d.getByLabel("Fat g").focus();
+  await expect(d.getByRole("button", { name: "Add food" })).toBeInViewport();
+  await page.keyboard.press("Escape");
+  await expect(d).toHaveCount(0);
+});

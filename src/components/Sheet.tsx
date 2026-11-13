@@ -14,11 +14,13 @@ type SheetProps = {
   nested?: boolean;
   /** Fires once the close animation has finished. */
   onClosed?: () => void;
+  /** CSS selector of a field to focus on open (opts in to the keyboard). Default: the sheet itself. */
+  initialFocus?: string;
   children: ReactNode;
 };
 
 /** Bottom sheet (vaul drawer) at every breakpoint. Escape, the overlay and a swipe close only the top sheet. */
-export function Sheet({ open, onOpenChange, title, onBack, footer, nested, onClosed, children }: SheetProps) {
+export function Sheet({ open, onOpenChange, title, onBack, footer, nested, onClosed, initialFocus, children }: SheetProps) {
   const Root = nested ? Drawer.NestedRoot : Drawer.Root;
   const contentRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -55,7 +57,8 @@ export function Sheet({ open, onOpenChange, title, onBack, footer, nested, onClo
           // Move focus into the sheet without focusing a field (that would pop the phone keyboard).
           onOpenAutoFocus={() => {
             returnFocus.current = document.activeElement;
-            contentRef.current?.focus({ preventScroll: true });
+            const field = initialFocus ? contentRef.current?.querySelector<HTMLElement>(initialFocus) : null;
+            (field ?? contentRef.current)?.focus({ preventScroll: true });
           }}
           // Radix only refocuses a Drawer.Trigger; these sheets have none, so return focus to the opener.
           onCloseAutoFocus={(e) => {
