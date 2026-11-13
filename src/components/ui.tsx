@@ -269,3 +269,17 @@ export function StatusIcon({ children, tone = "neutral" }: { children: ReactNode
     </span>
   );
 }
+
+/** Small segmented control (radio group) for switching views, e.g. Front / Back. */
+export function Segmented<T extends string>({ value, onChange, options, label }: { value: T; onChange: (v: T) => void; options: { value: T; label: string }[]; label: string }) {
+  return (
+    <div className="flex rounded-lg bg-surface-2 p-0.5" role="radiogroup" aria-label={label}>
+      {options.map((o) => (
+        <button key={o.value} type="button" role="radio" aria-checked={value === o.value} onClick={() => onChange(o.value)}
+          className={cn("min-h-8 rounded-md px-2.5 text-xs font-semibold whitespace-nowrap", value === o.value ? "bg-surface text-ink shadow-card" : "text-muted hover:text-ink")}>
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
