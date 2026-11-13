@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { createClient } from "@supabase/supabase-js";
 import { test, expect, type Browser, type Page } from "@playwright/test";
 const PASSWORD = "demo-pass-123";
 const stamp = Date.now();
@@ -293,6 +295,15 @@ async function flowValue(scope: ReturnType<Page["locator"]>) {
   const digits = snap.match(/(\d(?:[\d,]| \d)*) \//)?.[1];
   return Number(digits?.replace(/[ ,]/g, "") ?? NaN);
 }
+// Same idea for a stat tile with no "/target": the number is the digits (with an optional ". d" decimal part)
+// inside the value element, after the label line.
+async function tileNumber(tile: ReturnType<Page["locator"]>) {
+  const snap = await tile.locator("number-flow-react").ariaSnapshot();
+  const m = snap.match(/\d(?:[\d,]| \d)*(?: ?\. ?\d(?: ?\d)*)?/);
+  const n = Number(m?.[0].replace(/[ ,]/g, "") ?? NaN);
+  expect(Number.isNaN(n), `no number in tile snapshot: ${snap}`).toBe(false);
+  return n;
+}
 
 test("calorie meter number animates to the new total", async ({ browser }) => {
   const page = await phone(browser, "alex@demo.test");
@@ -449,5 +460,31 @@ test("a failed day delete shows one toast and keeps the sheet open", async ({ br
   } finally {
     await page.unroute(route);
     await removeTemplateIfPresent(page, name);
+  }
+});
+
+// ---- Task 8: NumberFlow on progress tiles and unread counts ----
+test("logging body weight rolls the 7-day average", async ({ browser }) => {
+  const env = Object.fromEntries(
+    readFileSync(".env.local", "utf8").split(/\r?\n/).map((l) => l.trim()).filter((l) => l.includes("=")).map((l) => [l.slice(0, l.indexOf("=")), l.slice(l.indexOf("=") + 1)]),
+  );
+  const api = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
+  const { data: auth } = await api.auth.signInWithPassword({ email: "alex@demo.test", password: PASSWORD });
+  const alexId = auth.user!.id;
+  const d = new Date();
+  const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const { data: prev } = await api.from("body_weights").select("weight_kg").eq("client_id", alexId).eq("entry_date", today).maybeSingle();
+  const page = await phone(browser, "alex@demo.test");
+  try {
+    await page.goto("/progress");
+    const tile = page.locator("main").getByText("7-day average", { exact: true }).locator("xpath=..");
+    await expect(tile.locator("number-flow-react")).toBeVisible();
+    const before = await tileNumber(tile);
+    await page.getByLabel(/Body weight in/).fill("95.3");
+    await page.getByRole("button", { name: "Log", exact: true }).click();
+    await expect.poll(() => tileNumber(tile)).not.toBe(before);
+  } finally {
+    if (prev) await api.from("body_weights").update({ weight_kg: prev.weight_kg }).eq("client_id", alexId).eq("entry_date", today);
+    else await api.from("body_weights").delete().eq("client_id", alexId).eq("entry_date", today);
   }
 });

@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import NumberFlow from "@number-flow/react";
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { BarChart3, BookOpen, CalendarCheck, ClipboardList, Dumbbell, LayoutDashboard, LogOut, MessageCircle, Salad, UserPlus, Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -237,7 +238,7 @@ export default function AppShell({ profile, children }: { profile: Profile; chil
 function UnreadDot({ count }: { count: number }) {
   return (
     <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1.5 font-mono text-[10px] font-semibold text-white tabular-nums ring-2 ring-surface" aria-label={`${count} unread`}>
-      {count > 99 ? "99+" : count}
+      {count > 99 ? "99+" : <NumberFlow value={count} />}
     </span>
   );
 }

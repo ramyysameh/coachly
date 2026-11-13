@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import NumberFlow from "@number-flow/react";
 import { AlertTriangle, ChevronRight, Dumbbell, MessageCircle, UserPlus, Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useAsync, must } from "@/lib/useAsync";
@@ -148,7 +149,7 @@ function StatCard({ icon, label, value, tone, href }: { icon: React.ReactNode; l
   const body = (
     <Card className={tone === "warn" ? "border-warn-line bg-warn-bg/50" : tone === "brand" ? "border-brand/30 bg-brand/5" : ""}>
       <div className="flex items-center gap-2 text-muted [&_svg]:size-4">{icon}<span className="text-xs font-medium">{label}</span></div>
-      <p className="mt-2 text-3xl font-semibold tracking-tight tabular-nums">{value}</p>
+      <p className="mt-2 text-3xl font-semibold tracking-tight tabular-nums"><NumberFlow value={value} /></p>
     </Card>
   );
   return href ? <Link href={href} className="block rounded-2xl transition-transform duration-150 active:scale-[0.98]">{body}</Link> : body;
