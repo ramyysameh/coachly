@@ -213,3 +213,40 @@ test("archiving a client can be undone", async ({ browser }) => {
     await expect(page.getByRole("button", { name: "Archive" })).toBeVisible();
   }
 });
+
+async function openPicker(page: Page) {
+  await openFirstTemplate(page);
+  await page.getByRole("button", { name: "Add exercise" }).first().click();
+  return page.getByRole("dialog", { name: "Exercise library" });
+}
+
+test("Escape closes only the top sheet", async ({ browser }) => {
+  const page = await phone(browser, "coach@demo.test");
+  const picker = await openPicker(page);
+  await picker.getByRole("button", { name: /^About / }).first().click();
+  // includeHidden: Radix marks the sheet underneath aria-hidden while another sheet is on top.
+  const dialogs = page.getByRole("dialog", { includeHidden: true });
+  await expect(dialogs).toHaveCount(2);
+  await page.keyboard.press("Escape");
+  await expect(dialogs).toHaveCount(1);
+  await expect(picker).toBeVisible();
+});
+
+test("sheet traps focus and restores it on close", async ({ browser }) => {
+  const page = await phone(browser, "coach@demo.test");
+  const picker = await openPicker(page);
+  await expect(picker).toHaveAttribute("aria-modal", "true");
+  for (let i = 0; i < 25; i++) await page.keyboard.press("Tab");
+  expect(await page.evaluate(() => !!document.activeElement?.closest('[role="dialog"]'))).toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("button", { name: "Add exercise" }).first()).toBeFocused();
+});
+
+test("calendar day sheet opens as a drawer with a handle", async ({ browser }) => {
+  const page = await phone(browser, "alex@demo.test");
+  await page.goto("/progress");
+  await page.getByRole("grid", { name: "Training calendar" }).getByRole("button").first().click();
+  const sheet = page.getByRole("dialog");
+  await expect(sheet).toBeVisible();
+  await expect(sheet.locator("[data-vaul-handle]")).toBeVisible();
+});

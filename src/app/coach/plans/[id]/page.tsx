@@ -5,7 +5,8 @@ import { ArrowDown, ArrowUp, ChevronLeft, Info, Plus, Trash2, X } from "lucide-r
 import { createClient } from "@/lib/supabase/client";
 import { useAsync, must } from "@/lib/useAsync";
 import { PLAN_SELECT, sortPlan, type Exercise, type Plan, type PlanDay, type PlanExercise } from "@/lib/data";
-import { ExerciseBrowser, ExerciseThumb, Sheet, useLibrary } from "@/components/ExerciseLibrary";
+import { ExerciseBrowser, ExerciseThumb, useLibrary } from "@/components/ExerciseLibrary";
+import { Sheet, useSheet } from "@/components/Sheet";
 import { Badge, Button, Card, Empty, ErrorBox, Field, Input, NumInput, Spinner, Textarea } from "@/components/ui";
 import { cn, errMsg, fmtDate, WEEKDAYS } from "@/lib/utils";
 import { notify } from "@/lib/notify";
@@ -13,7 +14,7 @@ import { notify } from "@/lib/notify";
 export default function PlanBuilderPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const supabase = createClient();
-  const [pickerFor, setPickerFor] = useState<PlanDay | null>(null);
+  const picker = useSheet<PlanDay>();
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState(false);
 
@@ -106,7 +107,7 @@ export default function PlanBuilderPage({ params }: { params: Promise<{ id: stri
           write={write}
           onMove={(dir) => move("plan_days", plan.plan_days, di, dir)}
           onMoveExercise={(i, dir) => move("plan_exercises", day.plan_exercises, i, dir)}
-          onAddExercise={() => setPickerFor(day)}
+          onAddExercise={() => picker.show(day)}
         />
       ))}
 
@@ -118,26 +119,25 @@ export default function PlanBuilderPage({ params }: { params: Promise<{ id: stri
         <Plus className="size-4" /> Add workout day
       </Button>
 
-      {pickerFor && (
-        <ExercisePicker
-          onClose={() => setPickerFor(null)}
-          onPick={async (ex) => {
-            const day = pickerFor;
-            setPickerFor(null);
-            await write(() =>
-              supabase.from("plan_exercises").insert({
-                plan_day_id: day.id,
-                exercise_id: ex.id,
-                position: day.plan_exercises.length,
-                target_sets: 3,
-                rep_min: ex.is_bodyweight ? 8 : 8,
-                rep_max: ex.is_bodyweight ? 15 : 12,
-                rest_seconds: 90,
-              }),
-            );
-          }}
-        />
-      )}
+      <ExercisePicker
+        {...picker.bind}
+        onPick={async (ex) => {
+          const day = picker.item;
+          if (!day) return;
+          picker.close();
+          await write(() =>
+            supabase.from("plan_exercises").insert({
+              plan_day_id: day.id,
+              exercise_id: ex.id,
+              position: day.plan_exercises.length,
+              target_sets: 3,
+              rep_min: ex.is_bodyweight ? 8 : 8,
+              rep_max: ex.is_bodyweight ? 15 : 12,
+              rest_seconds: 90,
+            }),
+          );
+        }}
+      />
     </div>
   );
 }
@@ -257,13 +257,18 @@ function IconBtn({ label, onClick, disabled, danger, children }: { label: string
   );
 }
 
-function ExercisePicker({ onClose, onPick }: { onClose: () => void; onPick: (ex: Exercise) => void }) {
-  const { data, loading, error, reload } = useLibrary();
+function ExercisePicker({ onPick, ...bind }: { open: boolean; onOpenChange: (open: boolean) => void; onClosed: () => void; onPick: (ex: Exercise) => void }) {
   return (
-    <Sheet title="Exercise library" onClose={onClose}>
-      {loading ? <Spinner /> : error || !data ? <ErrorBox message={error ?? "Couldn't load the library"} onRetry={reload} /> : (
-        <ExerciseBrowser lib={data} onPick={onPick} canCreate compact onCreated={() => reload({ silent: true })} />
-      )}
+    <Sheet {...bind} title="Exercise library">
+      <PickerBody onPick={onPick} />
     </Sheet>
   );
+}
+
+/** Mounted only while the picker is open, so the library loads fresh each time. */
+function PickerBody({ onPick }: { onPick: (ex: Exercise) => void }) {
+  const { data, loading, error, reload } = useLibrary();
+  if (loading) return <Spinner />;
+  if (error || !data) return <ErrorBox message={error ?? "Couldn't load the library"} onRetry={reload} />;
+  return <ExerciseBrowser lib={data} onPick={onPick} canCreate compact nested onCreated={() => reload({ silent: true })} />;
 }
