@@ -50,7 +50,16 @@ test("copying an invite link toasts", async ({ browser }) => {
 test("a failed plan autosave toasts instead of an off-screen box", async ({ browser }) => {
   const page = await phone(browser, "coach@demo.test");
   await openFirstTemplate(page);
+  // one successful write first, so "All changes saved" is showing
+  const sunday = page.getByRole("group", { name: /weekdays/ }).first().getByRole("button").last();
+  await sunday.click();
+  await expect(page.getByText("All changes saved")).toBeVisible();
   await page.route("**/rest/v1/plan_days**", (r) => r.fulfill({ status: 500, body: '{"message":"boom"}' }));
   await page.getByRole("button", { name: "Add workout day" }).click();
   await expect(toast(page, /boom|Something went wrong/)).toBeVisible();
+  await expect(page.getByText("All changes saved")).toHaveCount(0);
+  // restore the seeded weekday
+  await page.unroute("**/rest/v1/plan_days**");
+  await sunday.click();
+  await expect(page.getByText("All changes saved")).toBeVisible();
 });

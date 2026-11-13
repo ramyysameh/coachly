@@ -32,8 +32,10 @@ export default function PlanBuilderPage({ params }: { params: Promise<{ id: stri
     setSaveError(null);
     const results = await Promise.all([fn()].flat());
     const failed = results.find((r) => r.error);
-    if (failed?.error) notify.error(errMsg(failed.error));
-    else setSavedAt(true);
+    if (failed?.error) {
+      notify.error(errMsg(failed.error));
+      setSavedAt(false);
+    } else setSavedAt(true);
     await reload({ silent: true });
     return !failed;
   }
