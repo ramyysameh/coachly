@@ -1,14 +1,18 @@
 "use client";
-import type { ReactElement } from "react";
+import { useId, type ReactElement } from "react";
 import { cn } from "@/lib/utils";
 import { muscleLabel, type Muscle } from "@/lib/muscles";
 
 /**
  * Front/back body outline with each muscle region filled by a tone.
- * Exercise cards use primary/secondary; the heat map (phase 3) will use low/mid/high.
+ * Exercise cards use primary/secondary; the heat map uses low/mid/high, and also draws a
+ * texture on low (dots) and high (stripes) so the scale doesn't rely on colour alone.
  */
 export type Tone = "primary" | "secondary" | "low" | "mid" | "high";
-type Props = { tones: Partial<Record<Muscle, Tone>>; size?: "xs" | "sm" | "md"; view?: "front" | "back" | "both"; className?: string; onSelect?: (m: Muscle) => void };
+type Props = {
+  tones: Partial<Record<Muscle, Tone>>; size?: "xs" | "sm" | "md"; view?: "front" | "back" | "both"; className?: string;
+  onSelect?: (m: Muscle) => void; selected?: Muscle | null;
+};
 const HEIGHT = { xs: "h-11", sm: "h-24", md: "h-56" };
 
 const TONE_CLASS: Record<Tone, string> = {
@@ -49,24 +53,44 @@ const BACK: [Muscle, ReactElement][] = [
 
 const BODY = "M50 26 L45 27 L44.5 31 C38 32 30 33 26 36 C21 39 20 46 20.5 52 L18.5 70 L16 96 L14 118 L19 120 L22.5 98 L27 74 L31 61 L33 76 L34 100 L32 115 L33 150 L35 168 L34 198 L37 204 L42 203 L42 170 L45 150 L48 121 L50 119 Z";
 
-function View({ label, shapes, tones, onSelect }: { label: string; shapes: [Muscle, ReactElement][]; tones: Props["tones"]; onSelect?: Props["onSelect"] }) {
+/** Texture fills for the heat-map tones; shared by the map and its legend. */
+export function TonePatterns({ id }: { id: string }) {
+  return (
+    <defs>
+      <pattern id={`${id}-dots`} width="3" height="3" patternUnits="userSpaceOnUse">
+        <circle cx="1.5" cy="1.5" r="0.55" className="fill-brand-dark" />
+      </pattern>
+      <pattern id={`${id}-stripes`} width="3" height="3" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+        <rect width="1.1" height="3" fill="white" fillOpacity="0.7" />
+      </pattern>
+    </defs>
+  );
+}
+export const TONE_PATTERN: Partial<Record<Tone, string>> = { low: "dots", high: "stripes" };
+
+function View({ label, shapes, tones, onSelect, selected }: { label: string; shapes: [Muscle, ReactElement][]; tones: Props["tones"]; onSelect?: Props["onSelect"]; selected?: Muscle | null }) {
+  const id = useId().replace(/:/g, "");
   return (
     <svg viewBox="0 0 100 210" role="img" aria-label={label} className="h-full w-auto">
       <title>{label}</title>
+      <TonePatterns id={id} />
       <circle cx="50" cy="15" r="10" className="fill-surface-2 stroke-line" strokeWidth="0.8" />
       {[false, true].map((mirror) => (
         <g key={String(mirror)} transform={mirror ? "translate(100 0) scale(-1 1)" : undefined}>
           <path d={BODY} className="fill-surface-2 stroke-line" strokeWidth="0.8" strokeLinejoin="round" />
           {shapes.map(([m, el]) => {
             const tone = tones[m];
+            const pattern = tone && TONE_PATTERN[tone];
             return (
               <g
                 key={m}
-                className={cn(tone ? TONE_CLASS[tone] : "fill-line", onSelect && "cursor-pointer hover:opacity-80")}
+                className={cn(tone ? TONE_CLASS[tone] : "fill-line", onSelect && "cursor-pointer hover:opacity-80", selected === m && "stroke-ink")}
+                strokeWidth={selected === m ? 1.4 : undefined}
                 onClick={onSelect ? () => onSelect(m) : undefined}
               >
                 <title>{muscleLabel(m)}</title>
                 {el}
+                {pattern && <g fill={`url(#${id}-${pattern})`} stroke="none" pointerEvents="none">{el}</g>}
               </g>
             );
           })}
@@ -76,11 +100,11 @@ function View({ label, shapes, tones, onSelect }: { label: string; shapes: [Musc
   );
 }
 
-export default function MuscleMap({ tones, size = "md", view = "both", className, onSelect }: Props) {
+export default function MuscleMap({ tones, size = "md", view = "both", className, onSelect, selected }: Props) {
   return (
     <div className={cn("flex items-center justify-center gap-1", HEIGHT[size], className)}>
-      {view !== "back" && <View label="Front" shapes={FRONT} tones={tones} onSelect={onSelect} />}
-      {view !== "front" && <View label="Back" shapes={BACK} tones={tones} onSelect={onSelect} />}
+      {view !== "back" && <View label="Front" shapes={FRONT} tones={tones} onSelect={onSelect} selected={selected} />}
+      {view !== "front" && <View label="Back" shapes={BACK} tones={tones} onSelect={onSelect} selected={selected} />}
     </div>
   );
 }

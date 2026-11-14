@@ -1,27 +1,32 @@
 "use client";
 import { useMemo, useState } from "react";
-import { ArrowDownRight, ArrowUpRight, CalendarCheck, Dumbbell, Medal, Scale, Target, Trophy } from "lucide-react";
+import NumberFlow, { type Format } from "@number-flow/react";
+import { ArrowDownRight, ArrowUpRight, CalendarCheck, Dumbbell, Medal, Scale, SlidersHorizontal, Target, Trophy } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useAsync, must } from "@/lib/useAsync";
 import { getActivePlan, type Plan } from "@/lib/data";
 import { buildDays, type CalSession } from "@/lib/calendar";
 import {
-  currentRecords, DEFAULT_TARGET, exerciseOptions, inRange, monthBounds, periodTotals, PR_LABEL, prEvents, setsPerMuscle,
-  strengthSeries, volumeStatus, weekStart, weightWithAverage, type GroupBy, type PeriodTotals, type PrEvent, type SessionRow, type SetRow,
+  currentRecords, DEFAULT_TARGET, exerciseOptions, fmtSets, inRange, monthBounds, periodTotals, PR_LABEL, prEvents, setsPerMuscle,
+  strengthSeries, volumeStatus, weekStart, weightWithAverage, type GroupBy, type MuscleTargets, type PeriodTotals, type PrEvent, type SessionRow, type SetRow,
 } from "@/lib/analytics";
 import { MUSCLES, muscleLabel, type Muscle } from "@/lib/muscles";
 import { BarsChart, TrendChart } from "@/components/Charts";
+import { loadTargets, MuscleTargetsEditor } from "@/components/MuscleHeatMap";
+import { useSheet } from "@/components/Sheet";
 import { Badge, Button, Card, Empty, ErrorBox, NumInput, Select, Skeleton } from "@/components/ui";
 import { addDays, cn, errMsg, fmtDate, fromKg, localDate, toKg, type Unit } from "@/lib/utils";
 
 type BW = { id: string; entry_date: string; weight_kg: number };
-type Data = { sets: SetRow[]; sessions: (SessionRow & CalSession)[]; plan: Plan | null; bw: BW[]; prs: PrEvent[] };
+type Data = { sets: SetRow[]; sessions: (SessionRow & CalSession)[]; plan: Plan | null; bw: BW[]; prs: PrEvent[]; targets: MuscleTargets };
 
 /**
  * Stats for one client, shared by the coach (client profile → Progress) and the client (Progress page).
  * Everything is calculated from logged sets, sessions and weigh-ins.
  */
-export default function ProgressView({ clientId, unit, canLogWeight, from, to }: { clientId: string; unit: Unit; canLogWeight: boolean; from?: string; to?: string }) {
+export default function ProgressView({ clientId, unit, canLogWeight, canEditTargets = false, from, to }: {
+  clientId: string; unit: Unit; canLogWeight: boolean; canEditTargets?: boolean; from?: string; to?: string;
+}) {
   const supabase = createClient();
   const today = localDate();
   const rangeFrom = from ?? addDays(today, -89);
@@ -30,15 +35,16 @@ export default function ProgressView({ clientId, unit, canLogWeight, from, to }:
   const { data, loading, error, reload } = useAsync(async (): Promise<Data> => {
     // A year of history so records and "previous best" are right even for a short range.
     const histFrom = addDays(rangeFrom < addDays(today, -365) ? rangeFrom : addDays(today, -365), 0);
-    const [sets, sessions, plan, bw] = await Promise.all([
+    const [sets, sessions, plan, bw, targets] = await Promise.all([
       supabase.rpc("completed_sets", { p_client: clientId, p_from: histFrom, p_to: today }),
       supabase.from("workout_sessions").select("id, scheduled_date, name, status, plan_day_id, started_at, completed_at")
         .eq("client_id", clientId).gte("scheduled_date", histFrom).order("scheduled_date"),
       getActivePlan(supabase, clientId),
       supabase.from("body_weights").select("*").eq("client_id", clientId).order("entry_date"),
+      loadTargets(supabase, clientId),
     ]);
     const rows = must(sets) as SetRow[];
-    return { sets: rows, sessions: must(sessions) as Data["sessions"], plan, bw: must(bw) as BW[], prs: prEvents(rows) };
+    return { sets: rows, sessions: must(sessions) as Data["sessions"], plan, bw: must(bw) as BW[], prs: prEvents(rows), targets };
   }, [clientId, rangeFrom, today]);
 
   if (loading) return <div className="space-y-4"><Skeleton className="h-36" /><Skeleton className="h-64" /><Skeleton className="h-64" /></div>;
@@ -50,7 +56,7 @@ export default function ProgressView({ clientId, unit, canLogWeight, from, to }:
       <Consistency data={data} from={rangeFrom} to={rangeTo} today={today} />
       <StrengthProgress data={data} unit={unit} from={rangeFrom} to={rangeTo} />
       <Records data={data} unit={unit} today={today} />
-      <MuscleVolume data={data} today={today} />
+      <MuscleVolume clientId={clientId} data={data} today={today} canEdit={canEditTargets} onSaved={() => reload({ silent: true })} />
       <BodyWeight clientId={clientId} unit={unit} entries={data.bw} canLog={canLogWeight} onSaved={() => reload({ silent: true })} from={rangeFrom} to={rangeTo} />
     </div>
   );
@@ -69,11 +75,14 @@ function Header({ icon, title, sub, action }: { icon: React.ReactNode; title: st
   );
 }
 
-function Tile({ label, value, sub, delta }: { label: string; value: string; sub?: string; delta?: { text: string; up: boolean | null } }) {
+const signed: Format = { maximumFractionDigits: 1, signDisplay: "exceptZero" };
+const oneDecimal: Format = { minimumFractionDigits: 1, maximumFractionDigits: 1 };
+
+function Tile({ label, value, format, suffix, sub, delta }: { label: string; value: number | null; format?: Format; suffix?: string; sub?: string; delta?: { text: string; up: boolean | null } }) {
   return (
     <div className="rounded-xl bg-surface-2 px-3 py-2">
       <p className="text-xs font-medium text-muted">{label}</p>
-      <p className="font-mono text-lg font-semibold tabular-nums">{value}</p>
+      <p className="font-mono text-lg font-semibold tabular-nums">{value === null ? "—" : <NumberFlow value={value} format={format} suffix={suffix} />}</p>
       {delta && (
         <p className="flex items-center gap-0.5 text-[11px] text-muted">
           {delta.up === true && <ArrowUpRight className="size-3.5 text-brand" aria-hidden />}
@@ -91,6 +100,14 @@ const fmtBig = (kg: number, unit: Unit) => {
   return v >= 10000 ? `${(v / 1000).toFixed(1)}k ${unit}` : `${Math.round(v).toLocaleString()} ${unit}`;
 };
 
+/** Total-lifted tile parts: whole units below 10,000, otherwise thousands with one decimal ("12.3k kg"). */
+function big(kg: number, unit: Unit): { value: number; format?: Format; suffix: string } {
+  const v = fromKg(kg, unit) ?? 0;
+  return v >= 10000
+    ? { value: Number((v / 1000).toFixed(1)), format: oneDecimal, suffix: `k ${unit}` }
+    : { value: Math.round(v), suffix: ` ${unit}` };
+}
+
 function delta(cur: number, prev: number, fmt: (n: number) => string = (n) => String(Math.round(n))) {
   if (prev === 0 && cur === 0) return { text: "same as last month", up: null };
   const d = cur - prev;
@@ -102,14 +119,15 @@ function MonthCompare({ data, unit, today }: { data: Data; unit: Unit; today: st
   const m = monthBounds(today);
   const cur: PeriodTotals = periodTotals(m.from, today, data.sessions, data.sets, data.prs);
   const prev: PeriodTotals = periodTotals(m.prevFrom, m.prevTo, data.sessions, data.sets, data.prs);
+  const lifted = big(cur.volumeKg, unit);
   return (
     <Card className="space-y-3">
       <Header icon={<CalendarCheck />} title={`${fmtDate(m.from, { month: "long" })} so far`} sub={`Compared with all of ${fmtDate(m.prevFrom, { month: "long" })}`} />
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <Tile label="Sessions" value={String(cur.sessions)} delta={delta(cur.sessions, prev.sessions)} />
-        <Tile label="Total lifted" value={fmtBig(cur.volumeKg, unit)} delta={delta(cur.volumeKg, prev.volumeKg, (n) => fmtBig(n, unit))} />
-        <Tile label="PRs" value={String(cur.prs)} delta={delta(cur.prs, prev.prs)} />
-        <Tile label="Avg session" value={cur.avgMinutes ? `${Math.round(cur.avgMinutes)} min` : "—"} sub={prev.avgMinutes ? `${Math.round(prev.avgMinutes)} min last month` : undefined} />
+        <Tile label="Sessions" value={cur.sessions} delta={delta(cur.sessions, prev.sessions)} />
+        <Tile label="Total lifted" {...lifted} delta={delta(cur.volumeKg, prev.volumeKg, (n) => fmtBig(n, unit))} />
+        <Tile label="PRs" value={cur.prs} delta={delta(cur.prs, prev.prs)} />
+        <Tile label="Avg session" value={cur.avgMinutes ? Math.round(cur.avgMinutes) : null} suffix=" min" sub={prev.avgMinutes ? `${Math.round(prev.avgMinutes)} min last month` : undefined} />
       </div>
     </Card>
   );
@@ -148,10 +166,10 @@ function Consistency({ data, from, to, today }: { data: Data; from: string; to: 
     <Card className="space-y-3">
       <Header icon={<Target />} title="Consistency" sub={`${fmtDate(from)} – ${fmtDate(to)}`} />
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <Tile label="Adherence" value={planned.length ? `${Math.round((hit / planned.length) * 100)}%` : "—"} sub={planned.length ? `${hit} of ${planned.length} planned` : "no plan in range"} />
-        <Tile label="Missed" value={String(missed)} sub="planned, not logged" />
-        <Tile label="Sessions / week" value={(done.length / nWeeks).toFixed(1)} sub={`${done.length} sessions`} />
-        <Tile label="Avg duration" value={totals.avgMinutes ? `${Math.round(totals.avgMinutes)} min` : "—"} />
+        <Tile label="Adherence" value={planned.length ? Math.round((hit / planned.length) * 100) : null} suffix="%" sub={planned.length ? `${hit} of ${planned.length} planned` : "no plan in range"} />
+        <Tile label="Missed" value={missed} sub="planned, not logged" />
+        <Tile label="Sessions / week" value={Number((done.length / nWeeks).toFixed(1))} format={oneDecimal} sub={`${done.length} sessions`} />
+        <Tile label="Avg duration" value={totals.avgMinutes ? Math.round(totals.avgMinutes) : null} suffix=" min" />
       </div>
       <div>
         <p className="mb-1 text-xs font-medium text-muted">Weekly adherence, last 8 weeks</p>
@@ -213,9 +231,9 @@ function StrengthProgress({ data, unit, from, to }: { data: Data; unit: Unit; fr
           ) : (
             <>
               <div className="grid grid-cols-3 gap-2">
-                <Tile label={weighted ? "Latest est. 1RM" : "Latest best reps"} value={weighted ? `${fromKg(last?.e1rm, unit) ?? "—"} ${unit}` : String(last?.bestReps ?? "—")} />
-                <Tile label="Change in range" value={change === null ? "—" : `${change > 0 ? "+" : change < 0 ? "−" : "±"}${weighted ? `${Math.abs(fromKg(change, unit) ?? 0)} ${unit}` : Math.abs(change)}`} />
-                <Tile label="Best set" value={best ? (weighted ? `${fromKg(best.weight, unit)} × ${best.reps}` : `${best.bestReps} reps`) : "—"} sub={best ? fmtDate(best.date, { month: "short", day: "numeric" }) : undefined} />
+                <Tile label={weighted ? "Latest est. 1RM" : "Latest best reps"} value={weighted ? fromKg(last?.e1rm, unit) : last?.bestReps ?? null} suffix={weighted ? ` ${unit}` : undefined} />
+                <Tile label="Change in range" value={change === null ? null : weighted ? fromKg(change, unit) : change} format={signed} suffix={weighted ? ` ${unit}` : undefined} />
+                <Tile label="Best set" value={best ? (weighted ? fromKg(best.weight, unit) : best.bestReps) : null} suffix={best ? (weighted ? ` × ${best.reps}` : " reps") : undefined} sub={best ? fmtDate(best.date, { month: "short", day: "numeric" }) : undefined} />
               </div>
               <TrendChart data={rows} series={[{ key: "value", label: weighted ? "Est. 1RM" : "Best reps", color: "var(--color-brand)" }]} unit={weighted ? unit : "reps"} digits={weighted ? 1 : 0} />
             </>
@@ -293,9 +311,12 @@ export function prValue(e: PrEvent, unit: Unit) {
   return `${fromKg(e.value, unit)} ${unit}`;
 }
 
-/** Sets per muscle for a week (primary = 1, secondary = 0.5) against a 10–20 set target. */
-function MuscleVolume({ data, today }: { data: Data; today: string }) {
+/** Sets per muscle for a week (primary = 1, secondary = 0.5) against the client's weekly targets. */
+function MuscleVolume({ clientId, data, today, canEdit, onSaved }: { clientId: string; data: Data; today: string; canEdit: boolean; onSaved: () => void }) {
   const [period, setPeriod] = useState<"last7" | "prev7" | "avg4">("last7");
+  const targetsSheet = useSheet<true>();
+  const targets = data.targets;
+  const custom = MUSCLES.some((m) => targets[m].custom);
   const counts = useMemo(() => {
     if (period === "avg4") {
       const raw = setsPerMuscle(data.sets.filter((s) => inRange(s.performed_on, addDays(today, -27), today)));
@@ -304,8 +325,8 @@ function MuscleVolume({ data, today }: { data: Data; today: string }) {
     const end = period === "last7" ? today : addDays(today, -7);
     return setsPerMuscle(data.sets.filter((s) => inRange(s.performed_on, addDays(end, -6), end)));
   }, [data.sets, period, today]);
-  const rows = MUSCLES.map((m) => ({ m, sets: counts[m], status: volumeStatus(counts[m]) })).sort((a, b) => b.sets - a.sets);
-  const scaleMax = Math.max(DEFAULT_TARGET.max + 4, ...rows.map((r) => r.sets));
+  const rows = MUSCLES.map((m) => ({ m, sets: counts[m], target: targets[m], status: volumeStatus(counts[m], targets[m]) })).sort((a, b) => b.sets - a.sets);
+  const scaleMax = Math.max(DEFAULT_TARGET.max + 4, ...rows.map((r) => Math.max(r.sets, r.target.max + 2)));
   const pct = (v: number) => `${(v / scaleMax) * 100}%`;
   const counts3 = { below: rows.filter((r) => r.status === "below" || r.status === "none").length, within: rows.filter((r) => r.status === "within").length, above: rows.filter((r) => r.status === "above").length };
 
@@ -314,13 +335,16 @@ function MuscleVolume({ data, today }: { data: Data; today: string }) {
       <Header
         icon={<Target />}
         title="Weekly sets per muscle"
-        sub={`Each set counts 1 for primary muscles, 0.5 for secondary. Target ${DEFAULT_TARGET.min}–${DEFAULT_TARGET.max} sets.`}
+        sub={`Each set counts 1 for primary muscles, 0.5 for secondary. ${custom ? "Targets set per muscle by the coach (default 10–20)." : `Target ${DEFAULT_TARGET.min}–${DEFAULT_TARGET.max} sets per muscle.`}`}
         action={
-          <Select value={period} onChange={(e) => setPeriod(e.target.value as typeof period)} aria-label="Period" className="w-auto">
-            <option value="last7">Last 7 days</option>
-            <option value="prev7">7 days before</option>
-            <option value="avg4">4-week average</option>
-          </Select>
+          <div className="flex flex-wrap gap-2">
+            <Select value={period} onChange={(e) => setPeriod(e.target.value as typeof period)} aria-label="Period" className="w-auto">
+              <option value="last7">Last 7 days</option>
+              <option value="prev7">7 days before</option>
+              <option value="avg4">4-week average</option>
+            </Select>
+            {canEdit && <Button size="sm" variant="secondary" onClick={() => targetsSheet.show(true)}><SlidersHorizontal className="size-4" /> Set targets</Button>}
+          </div>
         }
       />
       <div className="flex flex-wrap gap-1.5 text-xs">
@@ -330,11 +354,11 @@ function MuscleVolume({ data, today }: { data: Data; today: string }) {
       </div>
       <ul className="space-y-1.5" aria-label="Sets per muscle">
         {rows.map((r) => (
-          <li key={r.m} className="grid grid-cols-[7.5rem_1fr_3.5rem] items-center gap-2 text-sm" title={`${muscleLabel(r.m)}: ${r.sets.toFixed(1)} sets`}>
+          <li key={r.m} className="grid grid-cols-[7.5rem_1fr_3.5rem] items-center gap-2 text-sm" title={`${muscleLabel(r.m)}: ${r.sets.toFixed(1)} sets (target ${fmtSets(r.target.min)}–${fmtSets(r.target.max)})`}>
             <span className="truncate">{muscleLabel(r.m)}</span>
             <span className="relative h-3 rounded-full bg-surface-2">
               {/* target band */}
-              <span className="absolute inset-y-0 rounded-full bg-brand/10 ring-1 ring-brand/20" style={{ left: pct(DEFAULT_TARGET.min), width: pct(DEFAULT_TARGET.max - DEFAULT_TARGET.min) }} aria-hidden />
+              <span className="absolute inset-y-0 rounded-full bg-brand/10 ring-1 ring-brand/20" style={{ left: pct(r.target.min), width: pct(r.target.max - r.target.min) }} aria-hidden />
               {r.sets > 0 && (
                 <span
                   className={cn("absolute inset-y-0.5 left-0 rounded-full", r.status === "above" ? "bg-warn-solid" : r.status === "within" ? "bg-brand" : "bg-muted/50")}
@@ -350,7 +374,8 @@ function MuscleVolume({ data, today }: { data: Data; today: string }) {
           </li>
         ))}
       </ul>
-      <p className="text-[11px] text-muted">Shaded band: target range. Grey bars are under target, teal on track, amber above (possible overload).</p>
+      <p className="text-[11px] text-muted">Shaded band: each muscle&apos;s target range. Grey bars are under target, teal on track, amber above (possible overload).</p>
+      <MuscleTargetsEditor key={targetsSheet.key} {...targetsSheet.bind} clientId={clientId} targets={targets} onSaved={() => { targetsSheet.close(); onSaved(); }} />
     </Card>
   );
 }
@@ -386,8 +411,8 @@ function BodyWeight({ clientId, unit, entries, canLog, onSaved, from, to }: { cl
       <Header icon={<Scale />} title="Body weight" sub="Dots are weigh-ins; the line is the 7-day average." />
       {latest && (
         <div className="grid grid-cols-2 gap-2">
-          <Tile label="7-day average" value={`${latest.avg7?.toFixed(1)} ${unit}`} />
-          <Tile label="Trend in range" value={firstAvg != null && latest.avg7 != null && rows.length > 1 ? `${latest.avg7 - firstAvg > 0 ? "+" : latest.avg7 - firstAvg < 0 ? "−" : "±"}${Math.abs(latest.avg7 - firstAvg).toFixed(1)} ${unit}` : "—"} />
+          <Tile label="7-day average" value={latest.avg7 ?? null} format={oneDecimal} suffix={` ${unit}`} />
+          <Tile label="Trend in range" value={firstAvg != null && latest.avg7 != null && rows.length > 1 ? latest.avg7 - firstAvg : null} format={signed} suffix={` ${unit}`} />
         </div>
       )}
       {rows.length > 1 ? (

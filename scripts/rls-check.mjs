@@ -149,6 +149,80 @@ check("Alex's coach sees Alex's completed sets", !a3.error && (a3.data ?? []).le
 const a4 = await anon.rpc("completed_sets", allTime);
 check("Anonymous cannot call completed_sets", !!a4.error || (a4.data ?? []).length === 0, a4.error?.message);
 
+// Muscle set targets: the client's active coach writes; the client and coach read; nobody else
+const COACH = "11111111-1111-1111-1111-111111111111";
+const COACH2 = "44444444-4444-4444-4444-444444444444";
+const t1 = await coach.from("muscle_targets").upsert({ client_id: ALEX, muscle: "rear_delts", min_sets: 8, max_sets: 14, updated_by: COACH }, { onConflict: "client_id,muscle" }).select();
+check("Alex's coach can set Alex's muscle targets", !t1.error && (t1.data ?? []).length === 1, t1.error?.message);
+check("Alex can read own muscle targets", (await rows(alex.from("muscle_targets").select("muscle").eq("client_id", ALEX).eq("muscle", "rear_delts"))).n === 1);
+check("Other coach cannot read Alex's muscle targets", (await rows(coach2.from("muscle_targets").select("muscle").eq("client_id", ALEX))).n === 0);
+check("Another client cannot read Alex's muscle targets", (await rows(sam.from("muscle_targets").select("muscle").eq("client_id", ALEX))).n === 0);
+const t2 = await coach2.from("muscle_targets").upsert({ client_id: ALEX, muscle: "chest", min_sets: 1, max_sets: 2, updated_by: COACH2 });
+check("Other coach cannot set Alex's muscle targets", !!t2.error, t2.error?.message);
+const t3 = await alex.from("muscle_targets").upsert({ client_id: ALEX, muscle: "chest", min_sets: 1, max_sets: 2, updated_by: ALEX });
+check("Client cannot set own muscle targets", !!t3.error, t3.error?.message);
+const t4 = await coach.from("muscle_targets").upsert({ client_id: ALEX, muscle: "chest", min_sets: 5, max_sets: 9, updated_by: ALEX });
+check("Coach cannot write targets in someone else's name", !!t4.error, t4.error?.message);
+const t5 = await coach2.from("muscle_targets").delete().eq("client_id", ALEX).select();
+check("Other coach cannot delete Alex's muscle targets", (t5.data ?? []).length === 0);
+await coach.from("muscle_targets").delete().eq("client_id", ALEX).eq("muscle", "rear_delts");
+
+// Progress photos: private bucket; client uploads to own folder; client and their coach read; nobody else
+const png = () => new Blob([Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10])], { type: "image/png" });
+const photoPath = `${ALEX}/rls-check-${Date.now()}.png`;
+const ph1 = await alex.storage.from("progress-photos").upload(photoPath, png(), { contentType: "image/png" });
+check("Client can upload a progress photo to own folder", !ph1.error, ph1.error?.message);
+const ph2 = await alex.from("progress_photos").insert({ client_id: ALEX, taken_on: "2001-01-01", pose: "front", storage_path: photoPath }).select("id").single();
+check("Client can record own progress photo", !ph2.error, ph2.error?.message);
+check("Alex's coach can read Alex's photo records", (await rows(coach.from("progress_photos").select("id").eq("client_id", ALEX))).n > 0);
+const ph3 = await coach.storage.from("progress-photos").download(photoPath);
+check("Alex's coach can open Alex's progress photo", !ph3.error && !!ph3.data, ph3.error?.message);
+const ph4 = await coach2.storage.from("progress-photos").download(photoPath);
+check("Other coach cannot open Alex's progress photo", !!ph4.error);
+const ph5 = await sam.storage.from("progress-photos").download(photoPath);
+check("Another client cannot open Alex's progress photo", !!ph5.error);
+const ph6 = await anon.storage.from("progress-photos").download(photoPath);
+check("Anonymous cannot open a progress photo", !!ph6.error);
+const ph7 = await sam.storage.from("progress-photos").createSignedUrl(photoPath, 60);
+check("Another client cannot sign a URL for Alex's photo", !!ph7.error);
+const ph8 = await sam.storage.from("progress-photos").list(ALEX);
+check("Another client cannot list Alex's photo folder", (ph8.data ?? []).length === 0);
+const pubUrl = alex.storage.from("progress-photos").getPublicUrl(photoPath).data.publicUrl;
+const pub = await fetch(pubUrl);
+check("Progress photos have no public URL", !pub.ok, `HTTP ${pub.status}`);
+check("Other coach cannot read Alex's photo records", (await rows(coach2.from("progress_photos").select("id").eq("client_id", ALEX))).n === 0);
+check("Another client cannot read Alex's photo records", (await rows(sam.from("progress_photos").select("id").eq("client_id", ALEX))).n === 0);
+const ph9 = await sam.storage.from("progress-photos").upload(`${ALEX}/spoof.png`, png(), { contentType: "image/png" });
+check("Client cannot upload into another client's photo folder", !!ph9.error, ph9.error?.message);
+const ph10 = await coach.storage.from("progress-photos").upload(`${ALEX}/coach.png`, png(), { contentType: "image/png" });
+check("Coach cannot upload into a client's photo folder", !!ph10.error, ph10.error?.message);
+const ph11 = await sam.from("progress_photos").insert({ client_id: ALEX, taken_on: "2001-01-02", pose: "side", storage_path: `${ALEX}/x.png` });
+check("Client cannot record a photo for another client", !!ph11.error, ph11.error?.message);
+const ph12 = await sam.from("progress_photos").insert({ client_id: SAM, taken_on: "2001-01-02", pose: "side", storage_path: photoPath });
+check("Client cannot point a photo record at another client's file", !!ph12.error, ph12.error?.message);
+const ph13 = await coach.from("progress_photos").delete().eq("client_id", ALEX).select();
+check("Coach cannot delete Alex's photo records", (ph13.data ?? []).length === 0);
+const ph14 = await sam.storage.from("progress-photos").remove([photoPath]);
+check("Another client cannot delete Alex's photo", (ph14.data ?? []).length === 0);
+if (ph2.data) await alex.from("progress_photos").delete().eq("id", ph2.data.id);
+const ph15 = await alex.storage.from("progress-photos").remove([photoPath]);
+check("Client can delete own progress photo", !ph15.error && (ph15.data ?? []).length === 1, ph15.error?.message);
+
+// Coach flag list: completed sets for all of the caller's active clients
+const recent = { p_from: "2000-01-01", p_to: "2100-01-01" };
+const f1 = await coach.rpc("coach_completed_sets", recent);
+const mine = new Set(((await coach.from("coach_clients").select("client_id").eq("coach_id", COACH).eq("status", "active")).data ?? []).map((r) => r.client_id));
+const f1rows = f1.data ?? [];
+check("Coach gets their active clients' completed sets (and only theirs)", !f1.error && f1rows.some((r) => r.client_id === ALEX) && f1rows.every((r) => mine.has(r.client_id)), f1.error?.message);
+const f2 = await coach2.rpc("coach_completed_sets", recent);
+check("Coach without clients gets no completed sets", !f2.error && (f2.data ?? []).length === 0, f2.error?.message);
+const f3 = await alex.rpc("coach_completed_sets", recent);
+check("Client gets no rows from coach_completed_sets", !f3.error && (f3.data ?? []).length === 0, f3.error?.message);
+const f4 = await anon.rpc("coach_completed_sets", recent);
+check("Anonymous cannot call coach_completed_sets", !!f4.error || (f4.data ?? []).length === 0, f4.error?.message);
+const f5 = await alex.rpc("is_coach_of_folder", { p_folder: ALEX });
+check("is_coach_of_folder is false for a client asking about themselves", !f5.error && f5.data === false, f5.error?.message);
+
 // Signed-out requests
 check("Anonymous cannot read sessions", (await rows(anon.from("workout_sessions").select("id"))).n === 0);
 check("Anonymous cannot read messages", (await rows(anon.from("messages").select("id"))).n === 0);

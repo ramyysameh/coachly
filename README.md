@@ -65,7 +65,9 @@ src/
   app/(client)/today|training|nutrition|progress|chat     client app (bottom nav)
   app/(client)/training/session/[id]                      workout logger
   app/coach/...                 dashboard, clients, client profile, plans + builder, messages, invite
-  components/                   shared UI, chat thread, nutrition day, progress charts
+  components/                   shared UI, chat thread, nutrition day, progress charts,
+                                muscle heat map, period comparison, progress photos
+  lib/analytics.ts, lib/flags.ts  stats, PRs, sets per muscle, targets; coach flag rules
 supabase/
   migrations/                   schema, RLS policies + RPC functions, exercise library
   seed.sql                      demo coach, clients, plans, logs, messages
@@ -82,6 +84,9 @@ scripts/rls-check.mjs           direct API requests proving cross-account access
 - **Completed sessions keep their original targets.** Starting a workout snapshots each exercise's name, sets, rep range, rest and notes into `session_exercises`. Later plan edits never touch existing sessions.
 - **Resumable logging.** Each set is saved as it's entered (on blur / on ✓), so closing the app mid-workout loses nothing; Today shows "Resume workout". Completed sessions stay editable for corrections.
 - **Units.** Weights are stored in kg and converted to the client's chosen unit for inputs, logs and charts (coaches see the client's unit too).
+- **Heat map and set targets.** Each completed set counts 1 for its exercise's primary muscles and 0.5 for secondary ones. The heat map (7 days, 30 days or a custom range; front/back) colours each muscle against its weekly target, using the weekly average for ranges longer than a week. Coaches set targets per client and per muscle (`muscle_targets`); muscles without a row use 10–20 sets. Low and high tones also get a texture (dots / stripes) so the scale isn't colour-only.
+- **Coach flags** (dashboard → Needs attention) are calculated in `src/lib/flags.ts` from one `coach_completed_sets()` call plus plans, sessions and weigh-ins: 2+ planned sessions missed in a row; no est. 1RM improvement for 3+ weeks on a main lift (the client's 3 most-trained loaded exercises, still being trained); 30%+ more sets than the previous 7 days; bodyweight weekly average moving against a fat-loss or muscle-gain goal two weeks running.
+- **Progress photos** live in the private `progress-photos` bucket under `<client id>/…`, with a `progress_photos` row per date and pose. Only the client writes; the client and their coach read through short-lived signed URLs. Photos are downscaled in the browser before upload.
 - **Messaging.** One conversation per relationship, created by trigger. New messages stream over Supabase Realtime (RLS applies to subscribers). The sender's device generates each message id, and sends use `upsert … ignoreDuplicates`, so retrying a failed send can never create a duplicate. Unread counts come from per-user read markers.
 
 ## Tests

@@ -8,12 +8,16 @@ import { useAsync, must } from "@/lib/useAsync";
 import { getActivePlan, SESSION_SELECT, sortSession, type Plan, type Session, type Targets } from "@/lib/data";
 import { useProfile } from "@/components/AppShell";
 import NutritionDay from "@/components/NutritionDay";
+import MuscleHeatMap from "@/components/MuscleHeatMap";
+import PeriodCompare from "@/components/PeriodCompare";
+import ProgressPhotos from "@/components/ProgressPhotos";
 import ProgressView from "@/components/ProgressView";
 import ProfileHeader from "@/components/ProfileHeader";
 import TrainingCalendar, { WeekGlance } from "@/components/TrainingCalendar";
 import SessionDetail from "@/components/SessionDetail";
 import { Badge, Button, Card, Empty, ErrorBox, Field, Input, LinkButton, NumInput, Select, Spinner, Tabs, Textarea } from "@/components/ui";
 import { addDays, errMsg, fmtDate, fmtDateTime, localDate, WEEKDAYS, type Unit } from "@/lib/utils";
+import { notify } from "@/lib/notify";
 
 type Client = { id: string; full_name: string; goal: string | null; weight_unit: Unit };
 type Tab = "overview" | "plan" | "workouts" | "nutrition" | "progress" | "notes";
@@ -27,6 +31,7 @@ function ClientProfileInner({ id }: { id: string }) {
   const [from, setFrom] = useState(addDays(localDate(), -27));
   const [to, setTo] = useState(localDate());
   const [busy, setBusy] = useState(false);
+  const [targetsVersion, setTargetsVersion] = useState(0);
 
   const { data, loading, error, reload } = useAsync(async () => {
     const [client, rel] = await Promise.all([
@@ -41,13 +46,13 @@ function ClientProfileInner({ id }: { id: string }) {
   }, [id, profile.id]);
 
   async function setStatus(status: "active" | "archived") {
-    if (status === "archived" && !confirm("Archive this client? Their history is kept, but you won't be able to assign plans or message them until restored.")) return;
     setBusy(true);
     const { error } = await supabase.rpc("set_client_status", { p_client: id, p_status: status });
     setBusy(false);
-    if (error) return alert(errMsg(error));
+    if (error) return notify.error(errMsg(error));
     reload({ silent: true });
     router.refresh();
+    if (status === "archived") notify.undo("Client archived", () => setStatus("active"));
   }
 
   if (loading) return <Spinner />;
@@ -111,6 +116,9 @@ function ClientProfileInner({ id }: { id: string }) {
         <div className="space-y-4">
           <WeekGlance clientId={client.id} unit={client.weight_unit} />
           <TrainingCalendar clientId={client.id} unit={client.weight_unit} />
+          <MuscleHeatMap clientId={client.id} canEditTargets={active} onTargetsSaved={() => setTargetsVersion((v) => v + 1)} />
+          {/* remount after a target edit so the comparison colours use the new targets */}
+          <PeriodCompare key={targetsVersion} clientId={client.id} unit={client.weight_unit} />
         </div>
       )}
       {tab === "plan" && <PlanTab clientId={client.id} active={active} />}
@@ -121,7 +129,12 @@ function ClientProfileInner({ id }: { id: string }) {
           <NutritionDay clientId={client.id} editable={false} />
         </div>
       )}
-      {tab === "progress" && <ProgressView clientId={client.id} unit={client.weight_unit} canLogWeight={false} from={from} to={to} />}
+      {tab === "progress" && (
+        <div className="space-y-4">
+          <ProgressView clientId={client.id} unit={client.weight_unit} canLogWeight={false} canEditTargets={active} from={from} to={to} />
+          <ProgressPhotos clientId={client.id} canUpload={false} />
+        </div>
+      )}
       {tab === "notes" && <NotesTab clientId={client.id} active={active} />}
     </div>
   );
@@ -292,7 +305,7 @@ function TargetsForm({ clientId, active }: { clientId: string; active: boolean }
   const { profile } = useProfile();
   const [f, setF] = useState<Record<string, string> | null>(null);
   const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
   const { loading, error, reload } = useAsync(async () => {
     const t = must(await supabase.from("nutrition_targets").select("*").eq("client_id", clientId).maybeSingle()) as Targets | null;
     setF({ calories: String(t?.calories ?? ""), protein_g: String(t?.protein_g ?? ""), carbs_g: String(t?.carbs_g ?? ""), fat_g: String(t?.fat_g ?? "") });
@@ -304,13 +317,15 @@ function TargetsForm({ clientId, active }: { clientId: string; active: boolean }
     if (!f) return;
     const vals = Object.fromEntries(Object.entries(f).map(([k, v]) => [k, Number(v)]));
     if (Object.values(f).some((v) => v.trim() === "") || Object.values(vals).some((v) => !Number.isInteger(v) || v < 0)) {
-      return setMsg({ ok: false, text: "Enter whole numbers (0 or more) for every target." });
+      return setMsg("Enter whole numbers (0 or more) for every target.");
     }
-    if (vals.calories > 20000 || vals.protein_g > 2000 || vals.carbs_g > 2000 || vals.fat_g > 2000) return setMsg({ ok: false, text: "One of the targets looks too high." });
+    if (vals.calories > 20000 || vals.protein_g > 2000 || vals.carbs_g > 2000 || vals.fat_g > 2000) return setMsg("One of the targets looks too high.");
     setSaving(true);
     const { error } = await supabase.from("nutrition_targets").upsert({ client_id: clientId, ...vals, updated_by: profile.id, updated_at: new Date().toISOString() });
     setSaving(false);
-    setMsg(error ? { ok: false, text: errMsg(error) } : { ok: true, text: "Targets saved." });
+    if (error) return setMsg(errMsg(error));
+    setMsg(null);
+    notify.success("Targets saved.");
   }
 
   if (loading || !f) return <Spinner />;
@@ -327,7 +342,7 @@ function TargetsForm({ clientId, active }: { clientId: string; active: boolean }
           <Field label="Carbs (g)"><NumInput value={f.carbs_g} onChange={set("carbs_g")} disabled={!active} /></Field>
           <Field label="Fat (g)"><NumInput value={f.fat_g} onChange={set("fat_g")} disabled={!active} /></Field>
         </div>
-        {msg && <p className={`text-sm ${msg.ok ? "text-brand-dark" : "text-danger"}`} role="status">{msg.text}</p>}
+        {msg && <p className="text-sm text-danger" role="status">{msg}</p>}
         {active && <Button type="submit" loading={saving}>Save targets</Button>}
       </form>
     </Card>
@@ -359,11 +374,15 @@ function NotesTab({ clientId, active }: { clientId: string; active: boolean }) {
     reload({ silent: true });
   }
 
-  async function remove(id: string) {
-    if (!confirm("Delete this note?")) return;
-    const { error } = await supabase.from("coach_notes").delete().eq("id", id);
-    if (error) return alert(errMsg(error));
+  async function remove(n: Note) {
+    const { error } = await supabase.from("coach_notes").delete().eq("id", n.id);
+    if (error) return notify.error(errMsg(error));
     reload({ silent: true });
+    notify.undo("Note deleted", async () => {
+      const { error } = await supabase.from("coach_notes").insert({ id: n.id, coach_id: profile.id, client_id: clientId, body: n.body, created_at: n.created_at });
+      if (error) return notify.error(errMsg(error));
+      reload({ silent: true });
+    });
   }
 
   return (
@@ -386,7 +405,7 @@ function NotesTab({ clientId, active }: { clientId: string; active: boolean }) {
                 <p className="whitespace-pre-wrap text-sm">{n.body}</p>
                 <p className="mt-1 text-xs text-muted">{fmtDateTime(n.created_at)}</p>
               </div>
-              <button className="flex size-10 items-center justify-center rounded-xl text-muted hover:bg-danger-bg hover:text-danger" onClick={() => remove(n.id)} aria-label="Delete note"><Trash2 className="size-4" /></button>
+              <button className="flex size-10 items-center justify-center rounded-xl text-muted hover:bg-danger-bg hover:text-danger" onClick={() => remove(n)} aria-label="Delete note"><Trash2 className="size-4" /></button>
             </li>
           ))}
         </ul>

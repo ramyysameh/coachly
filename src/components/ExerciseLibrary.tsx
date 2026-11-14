@@ -1,12 +1,14 @@
 "use client";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { ArrowLeftRight, ImagePlus, Info, Plus, Search, X } from "lucide-react";
+import { useMemo, useState, type ReactNode } from "react";
+import { ArrowLeftRight, ImagePlus, Plus, Search } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useAsync, must } from "@/lib/useAsync";
 import { EXERCISE_SELECT, type Exercise, type Movement, type Pattern } from "@/lib/data";
 import { ANGLES, cap, EQUIPMENT, GRIPS, MUSCLES, muscleLabel, PATTERNS, type Muscle } from "@/lib/muscles";
 import { useProfile } from "@/components/AppShell";
 import MuscleMap, { bestView, exerciseTones } from "@/components/MuscleMap";
+import { ExerciseCommand } from "@/components/ExerciseCommand";
+import { Sheet, useSheet } from "@/components/Sheet";
 import { Badge, Button, ErrorBox, Field, Input, Select, Spinner, Textarea } from "@/components/ui";
 import { cn, errMsg } from "@/lib/utils";
 
@@ -47,13 +49,13 @@ function group(list: Exercise[]) {
   return [...map.entries()].sort(([a], [b]) => (a === "Other" ? 1 : b === "Other" ? -1 : a.localeCompare(b)));
 }
 
-function FilterBar({ f, setF }: { f: Filters; setF: (f: Filters) => void }) {
+function FilterBar({ f, setF, hideSearch }: { f: Filters; setF: (f: Filters) => void; hideSearch?: boolean }) {
   return (
     <div className="space-y-2">
-      <div className="relative">
+      {!hideSearch && <div className="relative">
         <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted" aria-hidden />
         <Input className="pl-9" placeholder="Search exercises" value={f.q} onChange={(e) => setF({ ...f, q: e.target.value })} aria-label="Search exercises" />
-      </div>
+      </div>}
       <div className="grid grid-cols-3 gap-2">
         <Select aria-label="Muscle" value={f.muscle} onChange={(e) => setF({ ...f, muscle: e.target.value })}>
           <option value="">All muscles</option>
@@ -85,11 +87,11 @@ export function ExerciseThumb({ ex, className }: { ex: Exercise; className?: str
   );
 }
 
-function variantLabel(e: Exercise) {
+export function variantLabel(e: Exercise) {
   return [e.equipment, e.angle && cap(e.angle), e.grip && `${e.grip} grip`, e.unilateral && "single-arm/leg"].filter(Boolean).join(" · ");
 }
 
-function ExerciseList({ list, onOpen, onPick }: { list: Exercise[]; onOpen: (e: Exercise) => void; onPick?: (e: Exercise) => void }) {
+function ExerciseList({ list, onOpen }: { list: Exercise[]; onOpen: (e: Exercise) => void }) {
   if (list.length === 0) return <p className="p-6 text-center text-sm text-muted">No exercises match these filters.</p>;
   return (
     <div className="space-y-4">
@@ -100,7 +102,7 @@ function ExerciseList({ list, onOpen, onPick }: { list: Exercise[]; onOpen: (e: 
             {items.map((e) => (
               <li key={e.id} className="flex items-center gap-1">
                 <button
-                  onClick={() => (onPick ? onPick(e) : onOpen(e))}
+                  onClick={() => onOpen(e)}
                   className="flex min-h-14 min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-2 text-left hover:bg-surface-2"
                 >
                   <ExerciseThumb ex={e} />
@@ -115,11 +117,6 @@ function ExerciseList({ list, onOpen, onPick }: { list: Exercise[]; onOpen: (e: 
                     </span>
                   </span>
                 </button>
-                {onPick && (
-                  <button onClick={() => onOpen(e)} aria-label={`About ${e.name}`} className="flex size-10 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-surface-2">
-                    <Info className="size-4" />
-                  </button>
-                )}
               </li>
             ))}
           </ul>
@@ -352,69 +349,53 @@ function Check({ checked, onChange, children }: { checked: boolean; onChange: (v
   );
 }
 
-/** Bottom sheet on phones, centred dialog on desktop. */
-export function Sheet({ title, onClose, onBack, children, footer }: { title: string; onClose: () => void; onBack?: () => void; children: ReactNode; footer?: ReactNode }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-  return (
-    <div className="fixed inset-0 z-50 flex animate-fade items-end justify-center bg-slate-950/50 backdrop-blur-[2px] md:items-center" onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} role="dialog" aria-label={title}
-        className="flex max-h-[90dvh] w-full max-w-lg animate-sheet flex-col rounded-t-3xl border border-line bg-surface shadow-2xl md:rounded-3xl" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
-        <div className="flex items-center gap-2 p-4 pb-2">
-          {onBack && <Button size="sm" variant="ghost" onClick={onBack}>Back</Button>}
-          <h2 className="min-w-0 flex-1 truncate text-lg font-semibold">{title}</h2>
-          <button onClick={onClose} className="flex size-11 items-center justify-center rounded-xl hover:bg-surface-2" aria-label="Close"><X className="size-5" /></button>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-4 pt-2">{children}</div>
-        {footer && <div className="border-t border-line p-3">{footer}</div>}
-      </div>
-    </div>
-  );
-}
-
 /**
  * Browse the library. Without onPick it's a reference screen; with onPick (plan editor)
  * tapping a row adds it, and the info button opens the exercise card.
+ * `nested` is set when the browser itself sits inside a sheet, so its sheets stack on top.
  */
-export function ExerciseBrowser({ lib, onPick, canCreate, onCreated, compact }: {
-  lib: Library; onPick?: (e: Exercise) => void; canCreate?: boolean; onCreated?: () => void; compact?: boolean;
+export function ExerciseBrowser({ lib, onPick, canCreate, onCreated, compact, nested }: {
+  lib: Library; onPick?: (e: Exercise) => void; canCreate?: boolean; onCreated?: () => void; compact?: boolean; nested?: boolean;
 }) {
   const [f, setF] = useState<Filters>(NO_FILTERS);
-  const [open, setOpen] = useState<Exercise | null>(null);
+  const detail = useSheet<Exercise>();
   const [history, setHistory] = useState<Exercise[]>([]);
-  const [creating, setCreating] = useState(false);
-  const list = useMemo(() => lib.exercises.filter((e) => matches(e, f)), [lib.exercises, f]);
+  const create = useSheet<string>();
+  const list = useMemo(() => lib.exercises.filter((e) => matches(e, onPick ? { ...f, q: "" } : f)), [lib.exercises, f, onPick]);
 
-  const openEx = (e: Exercise) => { if (open) setHistory([...history, open]); setOpen(e); };
-  const close = () => { setOpen(null); setHistory([]); };
+  const openEx = (e: Exercise) => { setHistory(detail.open && detail.item ? [...history, detail.item] : []); detail.show(e); };
+  const back = () => { detail.show(history[history.length - 1]); setHistory(history.slice(0, -1)); };
+  const shown = detail.item;
 
   return (
     <div className="space-y-3">
-      <FilterBar f={f} setF={setF} />
-      <p className="px-1 text-xs text-muted">{list.length} of {lib.exercises.length} exercises</p>
-      <div className={cn(compact && "-mx-2")}><ExerciseList list={list} onOpen={openEx} onPick={onPick} /></div>
+      <FilterBar f={f} setF={setF} hideSearch={!!onPick} />
+      {onPick ? (
+        <div className={cn(compact && "-mx-2")}><ExerciseCommand exercises={list} search={f.q} onSearchChange={(q) => setF({ ...f, q })} onPick={onPick} onInfo={openEx} /></div>
+      ) : (
+        <>
+          <p className="px-1 text-xs text-muted">{list.length} of {lib.exercises.length} exercises</p>
+          <div className={cn(compact && "-mx-2")}><ExerciseList list={list} onOpen={openEx} /></div>
+        </>
+      )}
       {canCreate && (
-        <Button variant="secondary" className="w-full" onClick={() => setCreating(true)}><Plus className="size-4" /> Create custom exercise</Button>
+        <Button variant="secondary" className="w-full" onClick={() => create.show(f.q)}><Plus className="size-4" /> Create custom exercise</Button>
       )}
-      {open && (
-        <Sheet
-          title={open.name}
-          onClose={close}
-          onBack={history.length ? () => { setOpen(history[history.length - 1]); setHistory(history.slice(0, -1)); } : undefined}
-          footer={onPick ? <Button className="w-full" onClick={() => { onPick(open); close(); }}>Add {open.name}</Button> : undefined}
-        >
-          <ExerciseDetail ex={open} all={lib.exercises} onOpen={openEx} onPick={onPick ? (v) => { onPick(v); close(); } : undefined} />
-        </Sheet>
-      )}
-      {creating && (
-        <Sheet title="Custom exercise" onClose={() => setCreating(false)}>
-          <CustomExerciseForm lib={lib} initialName={f.q} onCancel={() => setCreating(false)}
-            onCreated={(e) => { setCreating(false); onCreated?.(); if (onPick) onPick(e); else setOpen(e); }} />
-        </Sheet>
-      )}
+      <Sheet
+        {...detail.bind}
+        nested={nested}
+        title={shown?.name ?? ""}
+        onBack={history.length ? back : undefined}
+        footer={onPick && shown ? <Button className="w-full" onClick={() => { onPick(shown); detail.close(); }}>Add {shown.name}</Button> : undefined}
+      >
+        {shown && <ExerciseDetail ex={shown} all={lib.exercises} onOpen={openEx} onPick={onPick ? (v) => { onPick(v); detail.close(); } : undefined} />}
+      </Sheet>
+      <Sheet {...create.bind} nested={nested} title="Custom exercise">
+        {create.item !== null && (
+          <CustomExerciseForm key={create.key} lib={lib} initialName={create.item} onCancel={create.close}
+            onCreated={(e) => { create.close(); onCreated?.(); if (onPick) onPick(e); else openEx(e); }} />
+        )}
+      </Sheet>
     </div>
   );
 }
