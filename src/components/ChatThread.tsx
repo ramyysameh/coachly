@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { AlertCircle, Loader2, RotateCw, Send } from "lucide-react";
+import { AlertCircle, ArrowDown, Loader2, RotateCw, Send } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/components/AppShell";
 import { ErrorBox, Spinner } from "@/components/ui";
@@ -18,6 +18,11 @@ export default function ChatThread({ conversationId, otherName, canSend }: { con
   const [text, setText] = useState("");
   const [live, setLive] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  // Follow new messages only while the reader is at the bottom; otherwise don't pull them away from
+  // older messages, and offer a pill to jump down instead.
+  const atBottom = useRef(true);
+  const [unseen, setUnseen] = useState(0);
 
   function merge(incoming: Msg[]) {
     setMessages((prev) => {
@@ -84,9 +89,30 @@ export default function ChatThread({ conversationId, otherName, canSend }: { con
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId]);
 
+  const lastId = messages.at(-1)?.id;
+  const lastMine = messages.at(-1)?.sender_id === profile.id;
   useLayoutEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: "end" });
-  }, [messages.length]);
+    if (!lastId) return;
+    // Your own message always scrolls into view; someone else's only if you were already at the bottom.
+    if (atBottom.current || lastMine) {
+      bottomRef.current?.scrollIntoView({ block: "end" });
+      atBottom.current = true;
+      setUnseen(0);
+    } else setUnseen((n) => n + 1);
+  }, [lastId, lastMine]);
+
+  function onListScroll() {
+    const el = listRef.current;
+    if (!el) return;
+    atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    if (atBottom.current) setUnseen(0);
+  }
+
+  function jumpToLatest() {
+    bottomRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
+    atBottom.current = true;
+    setUnseen(0);
+  }
 
   async function deliver(msg: Msg) {
     setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, state: "sending" } : m)));
@@ -127,7 +153,8 @@ export default function ChatThread({ conversationId, otherName, canSend }: { con
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3 py-4" aria-live="polite">
+      <div className="relative flex min-h-0 flex-1 flex-col">
+      <div ref={listRef} onScroll={onListScroll} className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3 py-4" aria-live="polite">
         {loading ? (
           <Spinner label="Loading messages…" />
         ) : error && messages.length === 0 ? (
@@ -162,6 +189,17 @@ export default function ChatThread({ conversationId, otherName, canSend }: { con
           })
         )}
         <div ref={bottomRef} />
+      </div>
+      {unseen > 0 && (
+        <button
+          type="button"
+          onClick={jumpToLatest}
+          className="absolute bottom-3 left-1/2 flex min-h-10 -translate-x-1/2 animate-enter items-center gap-1.5 rounded-full bg-ink px-4 text-sm font-semibold text-paper shadow-raised active:scale-[0.97]"
+        >
+          <ArrowDown className="size-4" aria-hidden />
+          {unseen === 1 ? "New message" : `${unseen} new messages`}
+        </button>
+      )}
       </div>
 
       {canSend ? (

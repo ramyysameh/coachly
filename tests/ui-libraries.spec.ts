@@ -351,7 +351,8 @@ test("login ignores a next link that points at another site", async ({ browser }
   await page.getByRole("button", { name: "Log in" }).click();
   await page.waitForURL((u) => !u.pathname.startsWith("/login"));
   expect(new URL(page.url()).origin).toBe(new URL(test.info().project.use.baseURL ?? "http://localhost:3000").origin);
-  await expect(page).toHaveURL(/\/coach$/);
+  // The fallback is "/", which then redirects a coach to their dashboard.
+  await page.waitForURL(/\/coach$/);
 });
 
 test("Escape closes only the top sheet", async ({ browser }) => {
@@ -449,6 +450,47 @@ test("calorie meter number animates to the new total", async ({ browser }) => {
   } finally {
     await removeMealIfPresent(page, name);
   }
+});
+
+test("a recently logged food fills the Add food form in one tap", async ({ browser }) => {
+  const page = await phone(browser, "alex@demo.test");
+  const name = `Recent ${stamp}`;
+  try {
+    await addMeal(page, name);
+    await page.locator("main section", { hasText: "Lunch" }).getByRole("button", { name: "Add food" }).click();
+    const d = page.getByRole("dialog", { name: "Add food" });
+    await d.getByRole("group", { name: "Recently logged" }).getByRole("button", { name: new RegExp(name) }).click();
+    await expect(d.getByLabel("Food")).toHaveValue(name);
+    await expect(d.getByLabel("Serving size")).toHaveValue("1");
+    await expect(d.getByLabel("Calories (kcal)")).toHaveValue("100");
+    await page.keyboard.press("Escape");
+    await expect(d).toHaveCount(0);
+  } finally {
+    await removeMealIfPresent(page, name);
+  }
+});
+
+test("removing a set can be undone with its logged values", async ({ browser }) => {
+  const page = await phone(browser, "alex@demo.test");
+  await page.goto("/training");
+  await page.getByRole("tab", { name: "History" }).click();
+  await page.locator('a[href^="/training/session/"]').first().click();
+  const card = page.locator("main section[aria-label]").first();
+  const checks = card.getByRole("button", { name: /^(Complete|Mark) set \d+/ });
+  await expect(checks.first()).toBeVisible();
+  const before = await checks.count();
+  const n = (await checks.last().getAttribute("aria-label"))!.match(/\d+/)![0];
+  const reps = await card.getByLabel(`Set ${n} reps`).inputValue();
+  const done = await checks.last().getAttribute("aria-pressed");
+  await card.getByRole("button", { name: "Remove last set" }).click();
+  await expect(checks).toHaveCount(before - 1);
+  await toast(page, `Set ${n} removed`).getByRole("button", { name: "Undo" }).click();
+  await expect(checks).toHaveCount(before);
+  await expect(card.getByLabel(`Set ${n} reps`)).toHaveValue(reps);
+  await expect(checks.last()).toHaveAttribute("aria-pressed", done!);
+  // And it's really back on the server, not just on screen.
+  await page.reload();
+  await expect(card.getByRole("button", { name: /^(Complete|Mark) set \d+/ })).toHaveCount(before);
 });
 
 test("set counter and progress bar update on check", async ({ browser }) => {

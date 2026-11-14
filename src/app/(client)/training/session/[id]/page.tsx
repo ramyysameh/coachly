@@ -9,11 +9,20 @@ import { useAsync, must } from "@/lib/useAsync";
 import { SESSION_SELECT, sortSession, type Session, type SessionExercise, type SessionSet } from "@/lib/data";
 import { useProfile } from "@/components/AppShell";
 import { Badge, Button, ErrorBox, Spinner, Textarea } from "@/components/ui";
+import { ConfirmSheet } from "@/components/Sheet";
 import { notify } from "@/lib/notify";
+import { isUnreachable } from "@/lib/supabase/authState";
 import { cn, errMsg, fmtDate, fmtRest, fromKg, toKg, type Unit } from "@/lib/utils";
 import { clearSetPatch, flushPendingSets, pendingPatchesFor, queueSetPatch } from "@/lib/pendingSets";
 
 type Prev = { exercise_id: string; performed_on: string; set_number: number; reps: number | null; weight_kg: number | null };
+
+/** Set edits queue offline; adding or removing a set row doesn't, so say that plainly instead of a generic error. */
+function setRowError(error: unknown) {
+  return isUnreachable(error) || !navigator.onLine
+    ? "Adding or removing sets needs a connection. The sets you've logged are kept on this phone."
+    : errMsg(error);
+}
 
 export default function SessionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -23,6 +32,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
   const unit = profile.weight_unit;
   const [rest, setRest] = useState<{ until: number; total: number } | null>(null);
   const [finishing, setFinishing] = useState(false);
+  const [confirmFinish, setConfirmFinish] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const { data, loading, error: loadError, reload, setData } = useAsync(async () => {
@@ -126,6 +136,13 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
               if (e) e.session_sets = sets;
             })
           }
+          // Undo of a removed set: works from the latest state, since other sets may have changed since.
+          onSetRestored={(set) =>
+            patchSession((s) => {
+              const e = s.session_exercises!.find((x) => x.id === ex.id);
+              if (e) e.session_sets = [...e.session_sets.filter((x) => x.id !== set.id), set].sort((a, b) => a.set_number - b.set_number);
+            })
+          }
           onCompleted={() => !completed && setRest({ until: Date.now() + ex.rest_seconds * 1000, total: ex.rest_seconds })}
         />
       ))}
@@ -134,7 +151,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
 
       {error && <ErrorBox message={error} />}
       {!completed ? (
-        <Button size="lg" className="w-full" onClick={finish} loading={finishing}>
+        <Button size="lg" className="w-full" onClick={() => (doneSets < allSets.length ? setConfirmFinish(true) : finish())} loading={finishing}>
           <Check className="size-5" /> Finish workout
         </Button>
       ) : (
@@ -142,19 +159,32 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
       )}
       <p className="pb-4 text-center text-xs text-muted">Progress saves as you go. You can close the app and resume any time.</p>
 
+      {/* Room for the floating rest timer, so it never covers the last sets or the Finish button. */}
+      {rest && <div aria-hidden className="h-20" />}
       {rest && <RestTimer rest={rest} onClose={() => setRest(null)} />}
+
+      <ConfirmSheet
+        open={confirmFinish}
+        onOpenChange={setConfirmFinish}
+        title="Finish with sets left?"
+        description={`${doneSets} of ${allSets.length} sets are checked off. Unchecked sets won't count towards this workout.`}
+        confirmLabel="Finish anyway"
+        tone="primary"
+        onConfirm={finish}
+      />
     </div>
   );
 }
 
 function ExerciseCard({
-  ex, unit, prev, onSetChange, onSetsReplaced, onCompleted,
+  ex, unit, prev, onSetChange, onSetsReplaced, onSetRestored, onCompleted,
 }: {
   ex: SessionExercise;
   unit: Unit;
   prev?: Prev[];
   onSetChange: (setId: string, patch: Partial<SessionSet>) => void;
   onSetsReplaced: (sets: SessionSet[]) => void;
+  onSetRestored: (set: SessionSet) => void;
   onCompleted: () => void;
 }) {
   const supabase = createClient();
@@ -171,7 +201,7 @@ function ExerciseCard({
       .select()
       .single();
     setBusy(false);
-    if (error) return notify.error(errMsg(error));
+    if (error) return notify.error(setRowError(error));
     onSetsReplaced([...ex.session_sets, data as SessionSet]);
   }
 
@@ -181,8 +211,15 @@ function ExerciseCard({
     setBusy(true);
     const { error } = await supabase.from("session_sets").delete().eq("id", last.id);
     setBusy(false);
-    if (error) return notify.error(errMsg(error));
+    if (error) return notify.error(setRowError(error));
     onSetsReplaced(ex.session_sets.slice(0, -1));
+    // The removed set may hold logged reps and weight, so it can be put back exactly as it was.
+    const row = { id: last.id, session_exercise_id: last.session_exercise_id, set_number: last.set_number, reps: last.reps, weight_kg: last.weight_kg, completed: last.completed };
+    notify.undo(`Set ${last.set_number} removed`, async () => {
+      const { data, error } = await createClient().from("session_sets").insert(row).select().single();
+      if (error) return notify.error(setRowError(error));
+      onSetRestored(data as SessionSet);
+    });
   }
 
   async function saveNotes() {
@@ -233,8 +270,8 @@ function ExerciseCard({
       </div>
 
       <div className="flex items-center gap-2 border-t border-line px-3 py-2">
-        <Button variant="ghost" size="sm" onClick={addSet} disabled={busy}><Plus className="size-4" /> Set</Button>
-        <Button variant="ghost" size="sm" onClick={removeSet} disabled={busy || ex.session_sets.length <= 1}><Minus className="size-4" /> Set</Button>
+        <Button variant="ghost" size="sm" onClick={addSet} disabled={busy} aria-label="Add set"><Plus className="size-4" aria-hidden /> Set</Button>
+        <Button variant="ghost" size="sm" onClick={removeSet} disabled={busy || ex.session_sets.length <= 1} aria-label="Remove last set"><Minus className="size-4" aria-hidden /> Set</Button>
       </div>
       <div className="px-3 pb-3">
         <Textarea placeholder="Notes for this exercise (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} onBlur={saveNotes} rows={1} className="min-h-11 text-sm" />
