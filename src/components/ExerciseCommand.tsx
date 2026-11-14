@@ -1,6 +1,6 @@
 "use client";
 import { Command } from "cmdk";
-import { Info, Search } from "lucide-react";
+import { Check, Info, Search } from "lucide-react";
 import type { Exercise } from "@/lib/data";
 import { wordFilter } from "@/lib/commandFilter";
 import { muscleLabel } from "@/lib/muscles";
@@ -12,8 +12,10 @@ import { CommandGroup } from "@/components/CommandGroup";
  * Searchable exercise list for the plan picker. cmdk does the fuzzy filtering and keyboard
  * navigation (type, ↓/↑, Enter adds). The info button sits outside the item so it never selects.
  */
-export function ExerciseCommand({ exercises, search, onSearchChange, onPick, onInfo }: {
+export function ExerciseCommand({ exercises, search, onSearchChange, onPick, onInfo, added }: {
   exercises: Exercise[];
+  /** How many times each exercise has been added since the picker opened. */
+  added?: ReadonlyMap<string, number>;
   /** Controlled, so the browser can prefill "Create custom exercise" with what was typed. */
   search: string;
   onSearchChange: (search: string) => void;
@@ -62,6 +64,12 @@ export function ExerciseCommand({ exercises, search, onSearchChange, onPick, onI
                       {variantLabel(e) && ` · ${variantLabel(e)}`}
                     </span>
                   </span>
+                  {!!added?.get(e.id) && (
+                    <span className="flex shrink-0 items-center gap-1 text-xs font-semibold text-brand-dark">
+                      <Check className="size-4" strokeWidth={2.5} aria-hidden />
+                      Added{added.get(e.id)! > 1 && ` ×${added.get(e.id)}`}
+                    </span>
+                  )}
                 </Command.Item>
                 <button
                   type="button"

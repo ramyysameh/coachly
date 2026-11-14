@@ -265,6 +265,10 @@ test("picker fuzzy-matches and adds with the keyboard", async ({ browser }) => {
     const options = picker.locator("[cmdk-list]").getByRole("option");
     await expect(options.first()).toContainText("Incline Dumbbell Press");
     await page.keyboard.press("Enter");
+    // The picker stays open for the next pick and marks what was added.
+    await expect(picker.getByText(/^1 added to /)).toBeVisible();
+    await expect(options.first()).toContainText("Added");
+    await picker.getByRole("button", { name: "Done" }).click();
     await expect(picker).toHaveCount(0);
     await expect(rows).toHaveCount(before + 1);
     await expect(rows.last()).toContainText("Incline Dumbbell Press");
@@ -275,6 +279,79 @@ test("picker fuzzy-matches and adds with the keyboard", async ({ browser }) => {
     if ((await rows.count()) > before) await removeBtn(before).click();
     await expect(rows).toHaveCount(before);
   }
+});
+
+test("the picker stays open so several exercises can be added in order", async ({ browser }) => {
+  const page = await phone(browser, "coach@demo.test");
+  await openFirstTemplate(page);
+  const addBtn = page.getByRole("button", { name: "Add exercise" }).first();
+  const rows = addBtn.locator("xpath=preceding-sibling::ul[1]/li").filter({ has: page.getByRole("button", { name: "Remove exercise" }) });
+  await expect(rows.first()).toBeVisible();
+  const before = await rows.count();
+  try {
+    await addBtn.click();
+    const picker = page.getByRole("dialog", { name: "Exercise library" });
+    const options = picker.locator("[cmdk-list]").getByRole("option");
+    await picker.getByLabel("Search exercises").fill("press");
+    await expect(options.nth(1)).toBeVisible();
+    const nameOf = (i: number) => options.nth(i).locator(".truncate").first().innerText();
+    const first = await nameOf(0);
+    const second = await nameOf(1);
+    await options.nth(0).click();
+    await expect(picker.getByText(/^1 added to /)).toBeVisible();
+    await expect(options.nth(0)).toContainText("Added");
+    await options.nth(1).click();
+    await expect(picker.getByText(/^2 added to /)).toBeVisible();
+    await picker.getByRole("button", { name: "Done" }).click();
+    await expect(picker).toHaveCount(0);
+    await expect(rows).toHaveCount(before + 2);
+    // Added in the order picked, after what the day already had.
+    await expect(rows.nth(before)).toContainText(first);
+    await expect(rows.nth(before + 1)).toContainText(second);
+  } finally {
+    if (await page.getByRole("dialog", { name: "Exercise library" }).count()) await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog", { name: "Exercise library" })).toHaveCount(0);
+    while ((await rows.count()) > before) {
+      const n = await rows.count();
+      await rows.nth(before).getByRole("button", { name: "Remove exercise" }).click();
+      await expect(rows).toHaveCount(n - 1);
+    }
+  }
+});
+
+test("quick weekday taps on a plan day are all saved", async ({ browser }) => {
+  const page = await phone(browser, "coach@demo.test");
+  const name = `Weekdays ${stamp}`;
+  try {
+    await newTemplate(page, name);
+    await page.getByRole("link", { name }).first().click();
+    await page.waitForURL("**/coach/plans/*");
+    const days = page.getByRole("group", { name: / weekdays$/ }).first();
+    await expect(days).toBeVisible();
+    const off = days.locator('button[aria-pressed="false"]');
+    const labels = [await off.nth(0).innerText(), await off.nth(1).innerText()];
+    // Two taps back to back, without waiting for the first save.
+    await days.getByRole("button", { name: labels[0], exact: true }).click();
+    await days.getByRole("button", { name: labels[1], exact: true }).click();
+    for (const l of labels) await expect(days.getByRole("button", { name: l, exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("status").filter({ hasText: "All changes saved" })).toBeVisible();
+    await page.reload();
+    for (const l of labels) await expect(days.getByRole("button", { name: l, exact: true })).toHaveAttribute("aria-pressed", "true");
+  } finally {
+    await removeTemplateIfPresent(page, name);
+  }
+});
+
+test("login ignores a next link that points at another site", async ({ browser }) => {
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const page = await ctx.newPage();
+  await page.goto("/login?next=//example.com/phish");
+  await page.getByLabel("Email").fill("coach@demo.test");
+  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByRole("button", { name: "Log in" }).click();
+  await page.waitForURL((u) => !u.pathname.startsWith("/login"));
+  expect(new URL(page.url()).origin).toBe(new URL(test.info().project.use.baseURL ?? "http://localhost:3000").origin);
+  await expect(page).toHaveURL(/\/coach$/);
 });
 
 test("Escape closes only the top sheet", async ({ browser }) => {

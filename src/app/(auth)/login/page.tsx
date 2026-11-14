@@ -4,11 +4,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button, ErrorBox, Field, Input } from "@/components/ui";
+import { safeRedirect } from "@/lib/utils";
 
 function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const next = params.get("next") || "/";
+  const next = safeRedirect(params.get("next"));
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -25,7 +26,7 @@ function LoginForm() {
       setLoading(false);
       return setError(error.message === "Invalid login credentials" ? "Email or password is incorrect." : error.message);
     }
-    router.replace(next.startsWith("/") ? next : "/");
+    router.replace(next);
     router.refresh();
   }
 
