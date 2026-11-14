@@ -1,6 +1,6 @@
 "use client";
 import { useMemo, useState, type ReactNode } from "react";
-import { ArrowLeftRight, ImagePlus, Info, Plus, Search } from "lucide-react";
+import { ArrowLeftRight, ImagePlus, Plus, Search } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useAsync, must } from "@/lib/useAsync";
 import { EXERCISE_SELECT, type Exercise, type Movement, type Pattern } from "@/lib/data";
@@ -91,7 +91,7 @@ export function variantLabel(e: Exercise) {
   return [e.equipment, e.angle && cap(e.angle), e.grip && `${e.grip} grip`, e.unilateral && "single-arm/leg"].filter(Boolean).join(" · ");
 }
 
-function ExerciseList({ list, onOpen, onPick }: { list: Exercise[]; onOpen: (e: Exercise) => void; onPick?: (e: Exercise) => void }) {
+function ExerciseList({ list, onOpen }: { list: Exercise[]; onOpen: (e: Exercise) => void }) {
   if (list.length === 0) return <p className="p-6 text-center text-sm text-muted">No exercises match these filters.</p>;
   return (
     <div className="space-y-4">
@@ -102,7 +102,7 @@ function ExerciseList({ list, onOpen, onPick }: { list: Exercise[]; onOpen: (e: 
             {items.map((e) => (
               <li key={e.id} className="flex items-center gap-1">
                 <button
-                  onClick={() => (onPick ? onPick(e) : onOpen(e))}
+                  onClick={() => onOpen(e)}
                   className="flex min-h-14 min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-2 text-left hover:bg-surface-2"
                 >
                   <ExerciseThumb ex={e} />
@@ -117,11 +117,6 @@ function ExerciseList({ list, onOpen, onPick }: { list: Exercise[]; onOpen: (e: 
                     </span>
                   </span>
                 </button>
-                {onPick && (
-                  <button onClick={() => onOpen(e)} aria-label={`About ${e.name}`} className="flex size-10 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-surface-2">
-                    <Info className="size-4" />
-                  </button>
-                )}
               </li>
             ))}
           </ul>
@@ -376,7 +371,7 @@ export function ExerciseBrowser({ lib, onPick, canCreate, onCreated, compact, ne
     <div className="space-y-3">
       <FilterBar f={f} setF={setF} hideSearch={!!onPick} />
       {onPick ? (
-        <div className={cn(compact && "-mx-2")}><ExerciseCommand exercises={list} onPick={onPick} onInfo={openEx} /></div>
+        <div className={cn(compact && "-mx-2")}><ExerciseCommand exercises={list} search={f.q} onSearchChange={(q) => setF({ ...f, q })} onPick={onPick} onInfo={openEx} /></div>
       ) : (
         <>
           <p className="px-1 text-xs text-muted">{list.length} of {lib.exercises.length} exercises</p>
@@ -397,7 +392,7 @@ export function ExerciseBrowser({ lib, onPick, canCreate, onCreated, compact, ne
       </Sheet>
       <Sheet {...create.bind} nested={nested} title="Custom exercise">
         {create.item !== null && (
-          <CustomExerciseForm lib={lib} initialName={create.item} onCancel={create.close}
+          <CustomExerciseForm key={create.key} lib={lib} initialName={create.item} onCancel={create.close}
             onCreated={(e) => { create.close(); onCreated?.(); if (onPick) onPick(e); else openEx(e); }} />
         )}
       </Sheet>

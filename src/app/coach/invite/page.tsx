@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useAsync, must } from "@/lib/useAsync";
 import { useProfile } from "@/components/AppShell";
 import { Badge, Button, Card, Empty, ErrorBox, Field, Input, PageHeader, Select, Spinner } from "@/components/ui";
-import { errMsg, fmtDateTime } from "@/lib/utils";
+import { cn, errMsg, fmtDateTime } from "@/lib/utils";
 import { notify } from "@/lib/notify";
 import { ConfirmSheet, useSheet } from "@/components/Sheet";
 
@@ -26,6 +26,7 @@ export default function InvitePage() {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  const [manual, setManual] = useState<string | null>(null);
   const revoking = useSheet<string>();
 
   const { data, loading, error: loadError, reload } = useAsync(
@@ -66,7 +67,9 @@ export default function InvitePage() {
       setTimeout(() => setCopied(null), 2000);
       notify.success("Invite link copied");
     } catch {
-      notify.error("Couldn't copy. Long-press to copy:", { description: link(token) });
+      // Show the whole link, selectable in one tap; a toast would vanish before it could be copied.
+      setManual(token);
+      notify.error("Couldn't copy automatically", { description: "Tap the link to select it, then copy." });
     }
   }
 
@@ -116,7 +119,12 @@ export default function InvitePage() {
                   </p>
                   {s.label === "Pending" && (
                     <div className="mt-2 flex flex-wrap gap-2">
-                      <code className="min-w-0 flex-1 truncate rounded-lg bg-paper px-2 py-2 text-xs" data-testid="invite-link">{link(i.token)}</code>
+                      <code
+                        className={cn("min-w-0 flex-1 rounded-lg bg-paper px-2 py-2 text-xs", manual === i.token ? "basis-full select-all break-all ring-2 ring-brand" : "truncate")}
+                        data-testid="invite-link"
+                      >
+                        {link(i.token)}
+                      </code>
                       <Button size="sm" variant="secondary" onClick={() => copy(i.token)}>
                         {copied === i.token ? <><Check className="size-4" /> Copied</> : <><Copy className="size-4" /> Copy</>}
                       </Button>

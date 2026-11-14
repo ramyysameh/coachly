@@ -33,6 +33,7 @@ export default function EditProfilePage() {
   const [uploading, setUploading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false); // keeps the button off while the redirect runs
 
   async function upload(file: File) {
     if (file.size > 2 * 1024 * 1024) return setErr("Photos must be under 2 MB.");
@@ -67,6 +68,7 @@ export default function EditProfilePage() {
     }).eq("id", profile.id);
     setSaving(false);
     if (error) return setErr(errMsg(error));
+    setSaved(true);
     notify.success("Profile updated");
     router.refresh();
     router.push("/progress");
@@ -130,7 +132,7 @@ export default function EditProfilePage() {
         </Card>
 
         {err && <ErrorBox message={err} />}
-        <Button type="submit" size="lg" loading={saving} className="w-full">Save profile</Button>
+        <Button type="submit" size="lg" loading={saving} disabled={saved} className="w-full">Save profile</Button>
       </form>
     </div>
   );

@@ -39,12 +39,35 @@ test("coach target save toasts and keeps the acceptance copy", async ({ browser 
   await expect(toast(page, "Targets saved.")).toBeVisible();
 });
 
+/** A Supabase client signed in as a demo account, for seeding and cleanup the UI can't do. */
+async function signedInApi(email: string) {
+  const env = Object.fromEntries(
+    readFileSync(".env.local", "utf8").split(/\r?\n/).map((l) => l.trim()).filter((l) => l.includes("=")).map((l) => [l.slice(0, l.indexOf("=")), l.slice(l.indexOf("=") + 1)]),
+  );
+  const api = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
+  const { data: auth, error } = await api.auth.signInWithPassword({ email, password: PASSWORD });
+  if (error) throw error;
+  return { api, userId: auth.user!.id };
+}
+
 test("copying an invite link toasts", async ({ browser }) => {
   const page = await phone(browser, "coach@demo.test");
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.goto("/coach/invite");
-  await page.getByRole("button", { name: /Create & copy link/ }).click();
-  await expect(toast(page, "Invite link copied")).toBeVisible();
+  let token: string | undefined;
+  try {
+    await page.getByRole("button", { name: /Create & copy link/ }).click();
+    await expect(toast(page, "Invite link copied")).toBeVisible();
+    token = (await page.evaluate(() => navigator.clipboard.readText())).split("/invite/")[1];
+    expect(token).toBeTruthy();
+  } finally {
+    // The invite exists only for this test; delete it so the coach's list doesn't grow every run.
+    if (token) {
+      const { api } = await signedInApi("coach@demo.test");
+      const { error } = await api.from("invitations").delete().eq("token", token);
+      expect(error).toBeNull();
+    }
+  }
 });
 
 test("a failed plan autosave toasts instead of an off-screen box", async ({ browser }) => {
@@ -500,12 +523,7 @@ test("a failed day delete shows one toast and keeps the sheet open", async ({ br
 
 // ---- Task 8: NumberFlow on progress tiles and unread counts ----
 test("logging body weight rolls the 7-day average", async ({ browser }) => {
-  const env = Object.fromEntries(
-    readFileSync(".env.local", "utf8").split(/\r?\n/).map((l) => l.trim()).filter((l) => l.includes("=")).map((l) => [l.slice(0, l.indexOf("=")), l.slice(l.indexOf("=") + 1)]),
-  );
-  const api = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
-  const { data: auth } = await api.auth.signInWithPassword({ email: "alex@demo.test", password: PASSWORD });
-  const alexId = auth.user!.id;
+  const { api, userId: alexId } = await signedInApi("alex@demo.test");
   const d = new Date();
   const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   const { data: prev } = await api.from("body_weights").select("weight_kg").eq("client_id", alexId).eq("entry_date", today).maybeSingle();
@@ -553,4 +571,35 @@ test("Ctrl+K opens search on desktop", async ({ browser }) => {
 test("clients never see coach search", async ({ browser }) => {
   const page = await phone(browser, "alex@demo.test");
   await expect(page.getByRole("button", { name: "Search" })).toHaveCount(0);
+});
+
+// ---- Review fixes ----
+test("reopening the meal sheet mid-close shows the newly picked meal", async ({ browser }) => {
+  const page = await phone(browser, "alex@demo.test");
+  const a = `Reopen A ${stamp}`;
+  const b = `Reopen B ${stamp}`;
+  try {
+    await addMeal(page, a);
+    await addMeal(page, b);
+    await page.getByRole("button", { name: `Edit ${a}` }).click();
+    const edit = page.getByRole("dialog", { name: "Edit food" });
+    await expect(edit.getByLabel("Food")).toHaveValue(a);
+    // Close and reopen on another meal before the exit animation ends.
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: `Edit ${b}` }).click();
+    await expect(edit.getByLabel("Food")).toHaveValue(b);
+  } finally {
+    await page.keyboard.press("Escape");
+    await removeMealIfPresent(page, a);
+    await removeMealIfPresent(page, b);
+  }
+});
+
+test("Create custom exercise in the picker starts from the typed search", async ({ browser }) => {
+  const page = await phone(browser, "coach@demo.test");
+  const picker = await openPicker(page);
+  await picker.getByLabel("Search exercises").fill("zercher squat");
+  await picker.getByRole("button", { name: "Create custom exercise" }).click();
+  const form = page.getByRole("dialog", { name: "Custom exercise" });
+  await expect(form.getByLabel("Name")).toHaveValue("zercher squat");
 });

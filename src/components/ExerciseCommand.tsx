@@ -6,12 +6,20 @@ import { wordFilter } from "@/lib/commandFilter";
 import { muscleLabel } from "@/lib/muscles";
 import { ExerciseThumb, variantLabel } from "@/components/ExerciseLibrary";
 import { Badge } from "@/components/ui";
+import { CommandGroup } from "@/components/CommandGroup";
 
 /**
  * Searchable exercise list for the plan picker. cmdk does the fuzzy filtering and keyboard
  * navigation (type, ↓/↑, Enter adds). The info button sits outside the item so it never selects.
  */
-export function ExerciseCommand({ exercises, onPick, onInfo }: { exercises: Exercise[]; onPick: (e: Exercise) => void; onInfo: (e: Exercise) => void }) {
+export function ExerciseCommand({ exercises, search, onSearchChange, onPick, onInfo }: {
+  exercises: Exercise[];
+  /** Controlled, so the browser can prefill "Create custom exercise" with what was typed. */
+  search: string;
+  onSearchChange: (search: string) => void;
+  onPick: (e: Exercise) => void;
+  onInfo: (e: Exercise) => void;
+}) {
   const groups = new Map<string, Exercise[]>();
   exercises.forEach((e) => {
     const key = e.movements?.name ?? "Other";
@@ -25,6 +33,8 @@ export function ExerciseCommand({ exercises, onPick, onInfo }: { exercises: Exer
       <div className="relative">
         <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted" aria-hidden />
         <Command.Input
+          value={search}
+          onValueChange={onSearchChange}
           placeholder="Search exercises"
           className="min-h-12 w-full rounded-xl border border-line bg-surface pr-3 pl-9 text-base outline-none focus:border-brand"
         />
@@ -32,11 +42,7 @@ export function ExerciseCommand({ exercises, onPick, onInfo }: { exercises: Exer
       <Command.List>
         <Command.Empty className="p-6 text-center text-sm text-muted">No exercises match</Command.Empty>
         {ordered.map(([movement, items]) => (
-          <Command.Group
-            key={movement}
-            heading={movement}
-            className="[&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:pt-3 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:tracking-wide [&_[cmdk-group-heading]]:text-muted [&_[cmdk-group-heading]]:uppercase"
-          >
+          <CommandGroup key={movement} heading={movement}>
             {items.map((e) => (
               <div key={e.id} className="flex items-center gap-1">
                 <Command.Item
@@ -67,7 +73,7 @@ export function ExerciseCommand({ exercises, onPick, onInfo }: { exercises: Exer
                 </button>
               </div>
             ))}
-          </Command.Group>
+          </CommandGroup>
         ))}
       </Command.List>
     </Command>

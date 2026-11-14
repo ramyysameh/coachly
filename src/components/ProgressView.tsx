@@ -114,12 +114,13 @@ function MonthCompare({ data, unit, today }: { data: Data; unit: Unit; today: st
   const m = monthBounds(today);
   const cur: PeriodTotals = periodTotals(m.from, today, data.sessions, data.sets, data.prs);
   const prev: PeriodTotals = periodTotals(m.prevFrom, m.prevTo, data.sessions, data.sets, data.prs);
+  const lifted = big(cur.volumeKg, unit);
   return (
     <Card className="space-y-3">
       <Header icon={<CalendarCheck />} title={`${fmtDate(m.from, { month: "long" })} so far`} sub={`Compared with all of ${fmtDate(m.prevFrom, { month: "long" })}`} />
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <Tile label="Sessions" value={cur.sessions} delta={delta(cur.sessions, prev.sessions)} />
-        <Tile label="Total lifted" value={big(cur.volumeKg, unit).value} format={big(cur.volumeKg, unit).format} suffix={big(cur.volumeKg, unit).suffix} delta={delta(cur.volumeKg, prev.volumeKg, (n) => fmtBig(n, unit))} />
+        <Tile label="Total lifted" {...lifted} delta={delta(cur.volumeKg, prev.volumeKg, (n) => fmtBig(n, unit))} />
         <Tile label="PRs" value={cur.prs} delta={delta(cur.prs, prev.prs)} />
         <Tile label="Avg session" value={cur.avgMinutes ? Math.round(cur.avgMinutes) : null} suffix=" min" sub={prev.avgMinutes ? `${Math.round(prev.avgMinutes)} min last month` : undefined} />
       </div>

@@ -169,6 +169,7 @@ export default function NutritionDay({ clientId, editable }: { clientId: string;
       >
         {editing.item && (
           <MealForm
+            key={editing.key}
             clientId={clientId}
             initial={editing.item}
             onSavingChange={setSaving}

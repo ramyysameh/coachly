@@ -88,13 +88,18 @@ export function Sheet({ open, onOpenChange, title, onBack, footer, nested, onClo
   );
 }
 
-/** Open/close state for a `Sheet` that shows one item. `item` stays set through the exit animation. */
+/**
+ * Open/close state for a `Sheet` that shows one item. `item` stays set through the exit animation.
+ * `key` changes on every `show()`: key the sheet's body with it, so a sheet reopened before its exit
+ * animation ends starts a fresh form instead of keeping the previous item's field state.
+ */
 export function useSheet<T>() {
-  const [state, setState] = useState<{ item: T | null; open: boolean }>({ item: null, open: false });
+  const [state, setState] = useState<{ item: T | null; open: boolean; key: number }>({ item: null, open: false, key: 0 });
   return {
     item: state.item,
     open: state.open,
-    show: (item: T) => setState({ item, open: true }),
+    key: state.key,
+    show: (item: T) => setState((s) => ({ item, open: true, key: s.key + 1 })),
     close: () => setState((s) => ({ ...s, open: false })),
     bind: {
       open: state.open,

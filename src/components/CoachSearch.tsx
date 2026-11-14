@@ -2,27 +2,25 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Command, useCommandState } from "cmdk";
-import { BookOpen, ClipboardList, Dumbbell, LayoutDashboard, MessageCircle, Plus, Search, User, UserPlus, Users } from "lucide-react";
+import { ClipboardList, Dumbbell, MessageCircle, Plus, Search, User, UserPlus } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { must, useAsync } from "@/lib/useAsync";
 import { wordFilter } from "@/lib/commandFilter";
 // Not useLibrary(): ExerciseLibrary imports AppShell, and AppShell renders this, so that would be an import cycle.
 import { Sheet } from "@/components/Sheet";
+import { CommandGroup } from "@/components/CommandGroup";
+import { coachNav } from "@/components/nav";
 import { Badge } from "@/components/ui";
 import { cn } from "@/lib/utils";
 
 type ClientRow = { client_id: string; status: string; profiles: { full_name: string } | null };
 type PlanRow = { id: string; name: string };
 type ExerciseRow = { id: string; name: string; equipment: string | null; movements: { name: string } | null };
+type SearchData = { clients: ClientRow[]; plans: PlanRow[]; exercises: ExerciseRow[] };
 
-const GO_TO = [
-  { href: "/coach", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/coach/clients", label: "Clients", icon: Users },
-  { href: "/coach/plans", label: "Plans", icon: ClipboardList },
-  { href: "/coach/library", label: "Library", icon: BookOpen },
-  { href: "/coach/messages", label: "Messages", icon: MessageCircle },
-  { href: "/coach/invite", label: "Invite", icon: UserPlus },
-];
+// Last results per coach, so reopening the palette (many times a day) shows them at once
+// while a fresh copy loads in the background.
+const lastResults = new Map<string, SearchData>();
 
 /**
  * Coach search palette: a 44px Search button plus Ctrl/⌘K, opening a bottom sheet with a cmdk list of
@@ -75,15 +73,20 @@ export default function CoachSearch({ coachId, className }: { coachId: string; c
 
 function SearchList({ coachId, go }: { coachId: string; go: (href: string) => void }) {
   const supabase = createClient();
-  const { data, loading, error } = useAsync(async () => {
+  const fresh = useAsync(async (): Promise<SearchData> => {
     const [clients, plans, exercises] = await Promise.all([
       supabase.from("coach_clients").select("client_id, status, profiles!coach_clients_client_id_fkey(full_name)").eq("coach_id", coachId),
       supabase.from("plans").select("id, name").eq("coach_id", coachId).is("client_id", null).order("created_at", { ascending: false }),
       supabase.from("exercises").select("id, name, equipment, movements(name)").order("name"),
     ]);
     const rows = (must(clients) as unknown as ClientRow[]).sort((a, b) => (a.profiles?.full_name ?? "").localeCompare(b.profiles?.full_name ?? ""));
-    return { clients: rows, plans: must(plans) as PlanRow[], exercises: must(exercises) as unknown as ExerciseRow[] };
+    const result = { clients: rows, plans: must(plans) as PlanRow[], exercises: must(exercises) as unknown as ExerciseRow[] };
+    lastResults.set(coachId, result);
+    return result;
   }, [coachId]);
+  const data = fresh.data ?? lastResults.get(coachId);
+  const loading = !data && fresh.loading;
+  const error = data ? null : fresh.error;
 
   return (
     <Command loop label="Search clients, plans and pages" filter={wordFilter} className="space-y-2">
@@ -99,13 +102,13 @@ function SearchList({ coachId, go }: { coachId: string; go: (href: string) => vo
         {error && <p className="p-4 text-center text-sm text-danger" role="alert">{error}</p>}
         <Command.Empty className="p-6 text-center text-sm text-muted">No results</Command.Empty>
 
-        <Group heading="Actions">
+        <CommandGroup heading="Actions">
           <Row value="action:invite" keywords={["Invite client", "add"]} onSelect={() => go("/coach/invite")} icon={<UserPlus />}>Invite client</Row>
           <Row value="action:new-plan" keywords={["New plan", "create template"]} onSelect={() => go("/coach/plans")} icon={<Plus />}>New plan</Row>
-        </Group>
+        </CommandGroup>
 
         {data && data.clients.length > 0 && (
-          <Group heading="Clients">
+          <CommandGroup heading="Clients">
             {data.clients.map((c) => {
               const name = c.profiles?.full_name || "Unnamed client";
               return (
@@ -115,12 +118,12 @@ function SearchList({ coachId, go }: { coachId: string; go: (href: string) => vo
                 </Row>
               );
             })}
-          </Group>
+          </CommandGroup>
         )}
 
         {data && data.clients.length > 0 && (
           <WhenSearching>
-            <Group heading="Message">
+            <CommandGroup heading="Message">
               {data.clients.map((c) => {
                 const name = c.profiles?.full_name || "Unnamed client";
                 return (
@@ -129,37 +132,37 @@ function SearchList({ coachId, go }: { coachId: string; go: (href: string) => vo
                   </Row>
                 );
               })}
-            </Group>
+            </CommandGroup>
           </WhenSearching>
         )}
 
         {data && data.plans.length > 0 && (
-          <Group heading="Plans">
+          <CommandGroup heading="Plans">
             {data.plans.map((p) => (
               <Row key={p.id} value={`plan:${p.id}`} keywords={[p.name, "template"]} onSelect={() => go(`/coach/plans/${p.id}`)} icon={<ClipboardList />}>
                 <span className="truncate">{p.name}</span>
               </Row>
             ))}
-          </Group>
+          </CommandGroup>
         )}
 
         {data && data.exercises.length > 0 && (
           <WhenSearching>
-            <Group heading="Exercises">
+            <CommandGroup heading="Exercises">
               {data.exercises.map((e) => (
                 <Row key={e.id} value={`exercise:${e.id}`} keywords={[e.name, e.movements?.name, e.equipment].filter((k): k is string => !!k)} onSelect={() => go("/coach/library")} icon={<Dumbbell />}>
                   <span className="truncate">{e.name}</span>
                 </Row>
               ))}
-            </Group>
+            </CommandGroup>
           </WhenSearching>
         )}
 
-        <Group heading="Go to">
-          {GO_TO.map((n) => (
+        <CommandGroup heading="Go to">
+          {coachNav.map((n) => (
             <Row key={n.href} value={`go:${n.href}`} keywords={[n.label, "page"]} onSelect={() => go(n.href)} icon={<n.icon />}>{n.label}</Row>
           ))}
-        </Group>
+        </CommandGroup>
       </Command.List>
     </Command>
   );
@@ -169,17 +172,6 @@ function SearchList({ coachId, go }: { coachId: string; go: (href: string) => vo
 function WhenSearching({ children }: { children: ReactNode }) {
   const search = useCommandState((s) => s.search);
   return search.trim() ? <>{children}</> : null;
-}
-
-function Group({ heading, children }: { heading: string; children: ReactNode }) {
-  return (
-    <Command.Group
-      heading={heading}
-      className="[&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:pt-3 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:tracking-wide [&_[cmdk-group-heading]]:text-muted [&_[cmdk-group-heading]]:uppercase"
-    >
-      {children}
-    </Command.Group>
-  );
 }
 
 function Row({ value, keywords, onSelect, icon, children }: { value: string; keywords: string[]; onSelect: () => void; icon: ReactNode; children: ReactNode }) {

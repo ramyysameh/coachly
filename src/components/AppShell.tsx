@@ -3,7 +3,8 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import NumberFlow from "@number-flow/react";
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
-import { BarChart3, BookOpen, CalendarCheck, ClipboardList, Dumbbell, LayoutDashboard, LogOut, MessageCircle, Salad, UserPlus, Users } from "lucide-react";
+import { LogOut } from "lucide-react";
+import { clientNav, coachNav } from "@/components/nav";
 import { createClient } from "@/lib/supabase/client";
 import type { Profile } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
@@ -23,25 +24,6 @@ export function useProfile() {
   if (!ctx) throw new Error("useProfile must be used inside AppShell");
   return ctx;
 }
-
-type NavItem = { href: string; label: string; icon: typeof Dumbbell; badge?: boolean };
-
-const clientNav: NavItem[] = [
-  { href: "/today", label: "Today", icon: CalendarCheck },
-  { href: "/training", label: "Training", icon: Dumbbell },
-  { href: "/nutrition", label: "Nutrition", icon: Salad },
-  { href: "/progress", label: "Progress", icon: BarChart3 },
-  { href: "/chat", label: "Chat", icon: MessageCircle, badge: true },
-];
-
-const coachNav: NavItem[] = [
-  { href: "/coach", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/coach/clients", label: "Clients", icon: Users },
-  { href: "/coach/plans", label: "Plans", icon: ClipboardList },
-  { href: "/coach/library", label: "Library", icon: BookOpen },
-  { href: "/coach/messages", label: "Messages", icon: MessageCircle, badge: true },
-  { href: "/coach/invite", label: "Invite", icon: UserPlus },
-];
 
 function isActive(path: string, href: string) {
   if (href === "/coach") return path === "/coach";
