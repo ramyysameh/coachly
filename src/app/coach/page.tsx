@@ -1,14 +1,18 @@
 "use client";
 import Link from "next/link";
 import NumberFlow from "@number-flow/react";
-import { AlertTriangle, ChevronRight, Dumbbell, MessageCircle, UserPlus, Users } from "lucide-react";
+import { AlertTriangle, CalendarX, ChevronRight, Dumbbell, Flag as FlagIcon, MessageCircle, Scale, TrendingUp, UserPlus, Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useAsync, must } from "@/lib/useAsync";
 import { useProfile } from "@/components/AppShell";
 import { Avatar, Badge, Card, Empty, ErrorBox, LinkButton, PageHeader, Skeleton } from "@/components/ui";
-import { addDays, fmtDate, fmtDateTime, localDate } from "@/lib/utils";
+import { addDays, fmtDate, fmtDateTime, localDate, type Unit } from "@/lib/utils";
+import { PLAN_SELECT, type Plan } from "@/lib/data";
+import type { CalSession } from "@/lib/calendar";
+import type { SetRow } from "@/lib/analytics";
+import { clientFlags, type Flag, type FlagKind } from "@/lib/flags";
 
-type ClientRow = { client_id: string; status: string; profiles: { id: string; full_name: string; goal: string | null } };
+type ClientRow = { client_id: string; status: string; profiles: { id: string; full_name: string; goal: string | null; goal_type: string | null; weight_unit: Unit } };
 type Recent = { id: string; name: string; scheduled_date: string; completed_at: string; client_id: string; profiles: { full_name: string } };
 type Missed = { client_id: string; scheduled_date: string; day_name: string };
 
@@ -19,16 +23,36 @@ export default function CoachDashboard() {
 
   const { data, loading, error, reload } = useAsync(async () => {
     const clients = must(
-      await supabase.from("coach_clients").select("client_id, status, profiles!coach_clients_client_id_fkey(id, full_name, goal)").eq("coach_id", profile.id).eq("status", "active"),
+      await supabase.from("coach_clients").select("client_id, status, profiles!coach_clients_client_id_fkey(id, full_name, goal, goal_type, weight_unit)").eq("coach_id", profile.id).eq("status", "active"),
     ) as unknown as ClientRow[];
     const ids = clients.map((c) => c.client_id);
-    const [recent, convs, unreadRows, lastByClient, missed] = await Promise.all([
+    const idList = ids.length ? ids : ["00000000-0000-0000-0000-000000000000"];
+    const [recent, convs, unreadRows, lastByClient, missed, allSets, plans, sessions, weights] = await Promise.all([
       supabase.from("workout_sessions").select("id, name, scheduled_date, completed_at, client_id, profiles(full_name)").in("client_id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]).eq("status", "completed").order("completed_at", { ascending: false }).limit(8),
       supabase.from("conversations").select("id, client_id").eq("coach_id", profile.id),
       supabase.rpc("unread_counts"),
       supabase.from("workout_sessions").select("client_id, completed_at").in("client_id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]).eq("status", "completed").order("completed_at", { ascending: false }).limit(500),
       supabase.rpc("coach_missed_sessions", { p_from: addDays(today, -14), p_to: addDays(today, -1) }),
+      // for the flag list: sets, plans, sessions and weigh-ins of every active client
+      supabase.rpc("coach_completed_sets", { p_from: addDays(today, -120), p_to: today }),
+      supabase.from("plans").select(PLAN_SELECT).in("client_id", idList).eq("is_active", true),
+      supabase.from("workout_sessions").select("id, client_id, scheduled_date, name, status, plan_day_id, started_at, completed_at")
+        .in("client_id", idList).gte("scheduled_date", addDays(today, -91)).order("scheduled_date"),
+      supabase.from("body_weights").select("client_id, entry_date, weight_kg").in("client_id", idList).gte("entry_date", addDays(today, -27)),
     ]);
+    const setRows = must(allSets) as (SetRow & { client_id: string })[];
+    const planRows = must(plans) as Plan[];
+    const sessionRows = must(sessions) as (CalSession & { client_id: string })[];
+    const weightRows = must(weights) as { client_id: string; entry_date: string; weight_kg: number }[];
+    const flags: Flag[] = clients.flatMap((c) => clientFlags({
+      clientId: c.client_id,
+      goalType: c.profiles.goal_type,
+      unit: c.profiles.weight_unit,
+      plan: planRows.find((p) => p.client_id === c.client_id) ?? null,
+      sessions: sessionRows.filter((s) => s.client_id === c.client_id),
+      sets: setRows.filter((s) => s.client_id === c.client_id),
+      weights: weightRows.filter((w) => w.client_id === c.client_id),
+    }, today));
     const convByClient = Object.fromEntries((must(convs) as { id: string; client_id: string }[]).map((c) => [c.client_id, c.id]));
     const unreadByConv = Object.fromEntries((must(unreadRows) as { conversation_id: string; unread: number }[]).map((u) => [u.conversation_id, Number(u.unread)]));
     const last: Record<string, string> = {};
@@ -44,6 +68,7 @@ export default function CoachDashboard() {
       recent: must(recent) as unknown as Recent[],
       missed: missedAll.sort((a, b) => b.scheduled_date.localeCompare(a.scheduled_date)),
       names: Object.fromEntries(clients.map((c) => [c.client_id, c.profiles.full_name])),
+      flags,
     };
   }, [profile.id, today]);
 
@@ -63,6 +88,8 @@ export default function CoachDashboard() {
             <StatCard icon={<AlertTriangle className="size-5" />} label="Missed (14 days)" value={data.missed.length} tone={data.missed.length ? "warn" : undefined} />
             <StatCard icon={<MessageCircle className="size-5" />} label="Unread messages" value={unread} tone={unread ? "brand" : undefined} href="/coach/messages" />
           </div>
+
+          <FlagList flags={data.flags} names={data.names} />
 
           <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
             <section>
@@ -142,6 +169,46 @@ export default function CoachDashboard() {
         </>
       )}
     </div>
+  );
+}
+
+const FLAG_ICON: Record<FlagKind, React.ReactNode> = {
+  missed: <CalendarX className="size-4" />,
+  stalled: <Dumbbell className="size-4" />,
+  volume: <TrendingUp className="size-4" />,
+  bodyweight: <Scale className="size-4" />,
+};
+const FLAG_KIND: Record<FlagKind, string> = { missed: "Missed sessions", stalled: "Strength stalled", volume: "Volume jump", bodyweight: "Bodyweight vs goal" };
+
+/** Coach-only: one list of automatic flags across all active clients. */
+function FlagList({ flags, names }: { flags: Flag[]; names: Record<string, string> }) {
+  return (
+    <section aria-labelledby="flags-heading">
+      <h2 id="flags-heading" className="mb-3 flex items-center gap-2 font-semibold tracking-tight">
+        <FlagIcon className="size-4 text-warn" aria-hidden /> Needs attention
+        {flags.length > 0 && <Badge tone="warn">{flags.length}</Badge>}
+      </h2>
+      <Card className="p-0">
+        {flags.length === 0 ? (
+          <p className="p-4 text-sm text-muted">No flags. Every active client is training as planned, progressing, and moving towards their goal.</p>
+        ) : (
+          <ul className="divide-y divide-line">
+            {flags.map((f, i) => (
+              <li key={`${f.clientId}-${f.kind}-${i}`}>
+                <Link href={`/coach/clients/${f.clientId}?tab=${f.tab}`} className="flex items-start gap-3 px-4 py-3 text-sm hover:bg-surface-2">
+                  <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-warn-bg text-warn" aria-hidden>{FLAG_ICON[f.kind]}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block"><span className="font-semibold">{names[f.clientId]}</span> · {f.title}</span>
+                    <span className="block text-xs text-muted"><span className="sr-only">{FLAG_KIND[f.kind]}: </span>{f.detail}</span>
+                  </span>
+                  <ChevronRight className="mt-1 size-4 shrink-0 text-muted" aria-hidden />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+    </section>
   );
 }
 

@@ -161,14 +161,54 @@ export function setsPerMuscle(sets: SetRow[]): Record<Muscle, number> {
   return out;
 }
 
+/** Starting target when the coach hasn't set one: roughly 10–20 hard sets per muscle per week. */
 export const DEFAULT_TARGET = { min: 10, max: 20 };
+export type Target = { min: number; max: number };
+export type MuscleTargets = Record<Muscle, Target & { custom: boolean }>;
+export type MuscleTargetRow = { muscle: string; min_sets: number; max_sets: number };
+
+/** Weekly set target for every muscle: the coach's value where set, otherwise the default. */
+export function muscleTargets(rows: MuscleTargetRow[] = []): MuscleTargets {
+  const out = Object.fromEntries(MUSCLES.map((m) => [m, { ...DEFAULT_TARGET, custom: false }])) as MuscleTargets;
+  for (const r of rows) {
+    if (r.muscle in out) out[r.muscle as Muscle] = { min: Number(r.min_sets), max: Number(r.max_sets), custom: true };
+  }
+  return out;
+}
+
 export type VolumeStatus = "none" | "below" | "within" | "above";
-export function volumeStatus(sets: number, target = DEFAULT_TARGET): VolumeStatus {
+export function volumeStatus(sets: number, target: Target = DEFAULT_TARGET): VolumeStatus {
   if (sets <= 0) return "none";
   if (sets < target.min) return "below";
   if (sets > target.max) return "above";
   return "within";
 }
+export const STATUS_LABEL: Record<VolumeStatus, string> = { none: "Not trained", below: "Below target", within: "On target", above: "Above target" };
+
+/** Number of days in an inclusive date range. */
+export const daysIn = (from: string, to: string) =>
+  Math.round((new Date(to + "T12:00:00").getTime() - new Date(from + "T12:00:00").getTime()) / 86400000) + 1;
+
+/** Sets in a range expressed per week, so 30-day and custom ranges compare against a weekly target. */
+export const perWeek = (sets: number, days: number) => (days <= 7 ? sets : (sets * 7) / days);
+
+export type MuscleExercise = { key: string; label: string; sets: number; role: "primary" | "secondary" };
+
+/** Which exercises trained a muscle in these sets, and how many (weighted) sets each contributed. */
+export function muscleExercises(sets: SetRow[], muscle: Muscle): MuscleExercise[] {
+  const map = new Map<string, MuscleExercise>();
+  for (const s of sets) {
+    const primary = s.primary_muscles.includes(muscle);
+    if (!primary && !s.secondary_muscles.includes(muscle)) continue;
+    const key = groupKey(s, "variant");
+    const e = map.get(key) ?? { key, label: s.exercise_name, sets: 0, role: primary ? "primary" : "secondary" };
+    e.sets += primary ? 1 : 0.5;
+    map.set(key, e);
+  }
+  return [...map.values()].sort((a, b) => b.sets - a.sets || a.label.localeCompare(b.label));
+}
+
+export const fmtSets = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
 
 /** Monday of the week containing `date`. */
 export const weekStart = (date: string) => addDays(date, -(isoWeekday(date) - 1));

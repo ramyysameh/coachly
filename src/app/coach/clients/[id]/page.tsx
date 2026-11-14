@@ -8,6 +8,9 @@ import { useAsync, must } from "@/lib/useAsync";
 import { getActivePlan, SESSION_SELECT, sortSession, type Plan, type Session, type Targets } from "@/lib/data";
 import { useProfile } from "@/components/AppShell";
 import NutritionDay from "@/components/NutritionDay";
+import MuscleHeatMap from "@/components/MuscleHeatMap";
+import PeriodCompare from "@/components/PeriodCompare";
+import ProgressPhotos from "@/components/ProgressPhotos";
 import ProgressView from "@/components/ProgressView";
 import ProfileHeader from "@/components/ProfileHeader";
 import TrainingCalendar, { WeekGlance } from "@/components/TrainingCalendar";
@@ -28,6 +31,7 @@ function ClientProfileInner({ id }: { id: string }) {
   const [from, setFrom] = useState(addDays(localDate(), -27));
   const [to, setTo] = useState(localDate());
   const [busy, setBusy] = useState(false);
+  const [targetsVersion, setTargetsVersion] = useState(0);
 
   const { data, loading, error, reload } = useAsync(async () => {
     const [client, rel] = await Promise.all([
@@ -112,6 +116,9 @@ function ClientProfileInner({ id }: { id: string }) {
         <div className="space-y-4">
           <WeekGlance clientId={client.id} unit={client.weight_unit} />
           <TrainingCalendar clientId={client.id} unit={client.weight_unit} />
+          <MuscleHeatMap clientId={client.id} canEditTargets={active} onTargetsSaved={() => setTargetsVersion((v) => v + 1)} />
+          {/* remount after a target edit so the comparison colours use the new targets */}
+          <PeriodCompare key={targetsVersion} clientId={client.id} unit={client.weight_unit} />
         </div>
       )}
       {tab === "plan" && <PlanTab clientId={client.id} active={active} />}
@@ -122,7 +129,12 @@ function ClientProfileInner({ id }: { id: string }) {
           <NutritionDay clientId={client.id} editable={false} />
         </div>
       )}
-      {tab === "progress" && <ProgressView clientId={client.id} unit={client.weight_unit} canLogWeight={false} from={from} to={to} />}
+      {tab === "progress" && (
+        <div className="space-y-4">
+          <ProgressView clientId={client.id} unit={client.weight_unit} canLogWeight={false} canEditTargets={active} from={from} to={to} />
+          <ProgressPhotos clientId={client.id} canUpload={false} />
+        </div>
+      )}
       {tab === "notes" && <NotesTab clientId={client.id} active={active} />}
     </div>
   );
