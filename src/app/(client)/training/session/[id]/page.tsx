@@ -1,5 +1,5 @@
 "use client";
-import { use, useEffect, useMemo, useRef, useState } from "react";
+import { use, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import NumberFlow from "@number-flow/react";
 import { useRouter } from "next/navigation";
@@ -95,7 +95,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
 
       <div className="h-1.5 overflow-hidden rounded-full bg-line" aria-hidden>
         <div
-          className="h-full w-full origin-left bg-brand transition-transform duration-300 ease-out"
+          className="h-full w-full origin-left bg-brand transition-transform duration-350 ease-out-quart"
           style={{ transform: `scaleX(${allSets.length ? doneSets / allSets.length : 0})` }}
         />
       </div>
@@ -393,6 +393,19 @@ function RestTimer({ rest, onClose }: { rest: { until: number; total: number }; 
     return () => clearInterval(t);
   }, []);
   const left = Math.max(0, Math.ceil((rest.until - now) / 1000));
+  // The bar drains in one linear transition over the whole rest, rather than stepping with the
+  // once-a-second countdown. Restarts when a new rest begins while the timer is still showing.
+  const bar = useRef<HTMLSpanElement>(null);
+  useLayoutEffect(() => {
+    const el = bar.current;
+    if (!el) return;
+    const ms = Math.max(0, rest.until - Date.now());
+    el.style.transition = "none";
+    el.style.transform = `scaleX(${rest.total ? Math.min(1, ms / (rest.total * 1000)) : 0})`;
+    void el.offsetWidth; // commit the start width before transitioning away from it
+    el.style.transition = `transform ${ms}ms linear`;
+    el.style.transform = "scaleX(0)";
+  }, [rest.until, rest.total]);
   useEffect(() => {
     if (left === 0) {
       navigator.vibrate?.(200);
@@ -412,11 +425,7 @@ function RestTimer({ rest, onClose }: { rest: { until: number; total: number }; 
         <X className="size-5" />
       </button>
       {/* remaining-rest bar */}
-      <span
-        aria-hidden
-        className="absolute inset-x-0 bottom-0 h-1 origin-left bg-brand transition-transform duration-300 ease-linear"
-        style={{ transform: `scaleX(${rest.total ? left / rest.total : 0})` }}
-      />
+      <span ref={bar} aria-hidden className="absolute inset-x-0 bottom-0 h-1 origin-left bg-brand" />
     </div>
   );
 }

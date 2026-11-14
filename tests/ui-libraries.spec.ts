@@ -566,6 +566,10 @@ test("Ctrl+K opens search on desktop", async ({ browser }) => {
   await expect(page.getByRole("dialog", { name: "Search" })).toHaveCount(1);
   await expect(page.getByRole("dialog", { name: "Search" })).toBeVisible();
   await expect(page.getByRole("dialog", { name: "Search" }).getByRole("combobox")).toBeFocused();
+  // A keyboard shortcut opens instantly: no enter animation, and Escape closes it.
+  expect(await page.getByRole("dialog", { name: "Search" }).evaluate((el) => el.getAnimations({ subtree: true }).length)).toBe(0);
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: "Search" })).toHaveCount(0);
 });
 
 test("clients never see coach search", async ({ browser }) => {

@@ -31,17 +31,8 @@
 
   --ease-out-quart: cubic-bezier(0.16, 1, 0.3, 1);
 
-  --animate-enter: enter 360ms var(--ease-out-quart) both;
-  --animate-sheet: sheet 320ms var(--ease-out-quart) both;
-  --animate-fade: fade 200ms ease-out both;
-  @keyframes sheet {
-    from { opacity: 0; transform: translateY(24px); }
-    to { opacity: 1; transform: none; }
-  }
-  @keyframes fade {
-    from { opacity: 0; }
-    to { opacity: 1; }
-  }
+  /* Keep UI motion under 300ms. Progress fills share 350ms + this curve (see Meter and the session bar). */
+  --animate-enter: enter 240ms var(--ease-out-quart) both;
   @keyframes enter {
     from { opacity: 0; transform: translateY(6px); }
     to { opacity: 1; transform: none; }
@@ -100,22 +91,43 @@ body {
   padding-bottom: calc(5.5rem + env(safe-area-inset-bottom));
 }
 
-/* Stagger helper: children of .stagger fade up in sequence on mount. */
+/*
+ * Stagger helper: children of .stagger fade up in sequence on mount. Kept short because Today is
+ * opened many times a day: the last card settles within ~360ms.
+ */
 .stagger > * {
   animation: var(--animate-enter);
 }
-.stagger > *:nth-child(2) { animation-delay: 40ms; }
-.stagger > *:nth-child(3) { animation-delay: 80ms; }
-.stagger > *:nth-child(4) { animation-delay: 120ms; }
-.stagger > *:nth-child(5) { animation-delay: 160ms; }
-.stagger > *:nth-child(n + 6) { animation-delay: 200ms; }
+.stagger > *:nth-child(2) { animation-delay: 30ms; }
+.stagger > *:nth-child(3) { animation-delay: 60ms; }
+.stagger > *:nth-child(4) { animation-delay: 90ms; }
+.stagger > *:nth-child(n + 5) { animation-delay: 120ms; }
 
+/* Outside @theme so they are always emitted (the reduced-motion rules below reference them). */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+/*
+ * Reduced motion means gentler motion, not none: fades stay (they show that something changed),
+ * movement goes. Spinners, progress fills and colour changes are left alone.
+ */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-delay: 0ms !important;
-    transition-duration: 0.01ms !important;
+  .animate-enter,
+  .stagger > * {
+    animation-name: fade-in;
+    animation-delay: 0ms;
+  }
+  /* vaul drawers fade instead of sliding; the duration is unchanged so its close callbacks still line up. */
+  [data-vaul-drawer][data-state="open"] {
+    animation-name: fade-in !important;
+  }
+  [data-vaul-drawer][data-state="closed"] {
+    animation-name: fade-out !important;
   }
 }

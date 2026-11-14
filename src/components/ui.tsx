@@ -186,7 +186,7 @@ export function Meter({ label, value, target, unit }: { label: string; value: nu
       >
         {target ? (
           <div
-            className={cn("h-full origin-left rounded-full transition-transform duration-700 ease-out-quart", over ? "bg-warn-solid" : "bg-brand")}
+            className={cn("h-full origin-left rounded-full transition-transform duration-350 ease-out-quart", over ? "bg-warn-solid" : "bg-brand")}
             style={{ transform: `scaleX(${pct / 100})` }}
           />
         ) : null}
