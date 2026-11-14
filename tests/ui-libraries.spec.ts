@@ -65,7 +65,9 @@ test("a failed plan autosave toasts instead of an off-screen box", async ({ brow
 });
 
 // ---- Task 3: undo instead of confirm ----
-const food = (page: Page, name: string) => page.locator("main").getByText(name, { exact: true });
+// Anchored at the start, not exact: a meal still queued offline shows a "Not synced" badge inside the same text.
+const food = (page: Page, name: string) =>
+  page.locator("main").getByText(new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(Not synced)?$`));
 // Records native dialogs (and dismisses them, so a stray confirm cannot hang the page).
 function trackDialogs(page: Page) {
   const seen: string[] = [];
