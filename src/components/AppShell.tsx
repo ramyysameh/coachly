@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { notify } from "@/lib/notify";
 import { BrandMark } from "@/components/ui";
 import { ConfirmSheet, useSheet } from "@/components/Sheet";
+import CoachSearch from "@/components/CoachSearch";
 import { clearOfflineData } from "@/lib/offline";
 import { flushPendingSets, pendingSetCount } from "@/lib/pendingSets";
 import { flushPendingMeals, pendingMealCount } from "@/lib/pendingMeals";
@@ -138,6 +139,7 @@ export default function AppShell({ profile, children }: { profile: Profile; chil
           <div className="mb-8 px-2">
             <BrandMark />
           </div>
+          {profile.role === "coach" && <CoachSearch coachId={profile.id} className="mb-3 w-full justify-start border border-line px-3" />}
           <nav className="flex-1 space-y-1" aria-label="Main">
             {nav.map((n) => (
               <Link
@@ -180,6 +182,7 @@ export default function AppShell({ profile, children }: { profile: Profile; chil
             style={{ paddingTop: "max(0.5rem, env(safe-area-inset-top))" }}
           >
             <BrandMark compact />
+            {profile.role === "coach" && <CoachSearch coachId={profile.id} className="ml-auto justify-center" />}
             <button onClick={signOut} className="flex min-h-10 items-center gap-1.5 rounded-lg px-2 text-sm text-muted active:bg-surface-2" aria-label="Log out">
               <LogOut className="size-4" strokeWidth={1.75} aria-hidden /> Log out
             </button>

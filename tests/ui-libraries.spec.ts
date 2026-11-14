@@ -390,6 +390,9 @@ async function removeTemplateIfPresent(page: Page, name: string) {
   await page.goto("/coach/plans");
   const del = page.getByRole("button", { name: `Delete ${name}` });
   await expect(page.getByRole("heading", { name: "Plan templates" })).toBeVisible();
+  // The heading renders before the list loads; wait for the list (the seeded samples always exist),
+  // or count() below reads 0 and the template leaks.
+  await expect(page.locator('a[href^="/coach/plans/"]').first()).toBeVisible();
   if (await del.count()) {
     await del.click();
     await page.getByRole("dialog", { name: "Delete template?" }).getByRole("button", { name: "Delete", exact: true }).click();
@@ -517,4 +520,35 @@ test("logging body weight rolls the 7-day average", async ({ browser }) => {
     if (prev) await api.from("body_weights").update({ weight_kg: prev.weight_kg }).eq("client_id", alexId).eq("entry_date", today);
     else await api.from("body_weights").delete().eq("client_id", alexId).eq("entry_date", today);
   }
+});
+
+// ---- Task 10: coach search palette ----
+test("coach can find a client from the phone header", async ({ browser }) => {
+  const page = await phone(browser, "coach@demo.test");
+  await page.goto("/coach");
+  await page.getByRole("button", { name: "Search" }).click();
+  const sheet = page.getByRole("dialog", { name: "Search" });
+  await sheet.getByRole("combobox").fill("alex");
+  await sheet.getByRole("option", { name: /Alex/ }).first().click();
+  await page.waitForURL("**/coach/clients/22222222-2222-2222-2222-222222222222");
+  await expect(sheet).toHaveCount(0);
+});
+
+test("Ctrl+K opens search on desktop", async ({ browser }) => {
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 860 } });
+  const page = await ctx.newPage();
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("coach@demo.test");
+  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByRole("button", { name: "Log in" }).click();
+  await page.waitForURL("**/coach");
+  await page.keyboard.press("Control+k");
+  await expect(page.getByRole("dialog", { name: "Search" })).toHaveCount(1);
+  await expect(page.getByRole("dialog", { name: "Search" })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Search" }).getByRole("combobox")).toBeFocused();
+});
+
+test("clients never see coach search", async ({ browser }) => {
+  const page = await phone(browser, "alex@demo.test");
+  await expect(page.getByRole("button", { name: "Search" })).toHaveCount(0);
 });
