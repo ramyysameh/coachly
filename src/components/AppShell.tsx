@@ -1,12 +1,17 @@
 "use client";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import NumberFlow from "@number-flow/react";
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
-import { BarChart3, BookOpen, CalendarCheck, ClipboardList, Dumbbell, LayoutDashboard, LogOut, MessageCircle, Salad, UserPlus, Users } from "lucide-react";
+import { LogOut } from "lucide-react";
+import { clientNav, coachNav } from "@/components/nav";
 import { createClient } from "@/lib/supabase/client";
 import type { Profile } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
+import { notify } from "@/lib/notify";
 import { BrandMark } from "@/components/ui";
+import { ConfirmSheet, useSheet } from "@/components/Sheet";
+import CoachSearch from "@/components/CoachSearch";
 import { clearOfflineData } from "@/lib/offline";
 import { flushPendingSets, pendingSetCount } from "@/lib/pendingSets";
 import { flushPendingMeals, pendingMealCount } from "@/lib/pendingMeals";
@@ -20,25 +25,6 @@ export function useProfile() {
   return ctx;
 }
 
-type NavItem = { href: string; label: string; icon: typeof Dumbbell; badge?: boolean };
-
-const clientNav: NavItem[] = [
-  { href: "/today", label: "Today", icon: CalendarCheck },
-  { href: "/training", label: "Training", icon: Dumbbell },
-  { href: "/nutrition", label: "Nutrition", icon: Salad },
-  { href: "/progress", label: "Progress", icon: BarChart3 },
-  { href: "/chat", label: "Chat", icon: MessageCircle, badge: true },
-];
-
-const coachNav: NavItem[] = [
-  { href: "/coach", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/coach/clients", label: "Clients", icon: Users },
-  { href: "/coach/plans", label: "Plans", icon: ClipboardList },
-  { href: "/coach/library", label: "Library", icon: BookOpen },
-  { href: "/coach/messages", label: "Messages", icon: MessageCircle, badge: true },
-  { href: "/coach/invite", label: "Invite", icon: UserPlus },
-];
-
 function isActive(path: string, href: string) {
   if (href === "/coach") return path === "/coach";
   return path === href || path.startsWith(href + "/");
@@ -49,6 +35,7 @@ export default function AppShell({ profile, children }: { profile: Profile; chil
   const router = useRouter();
   const supabase = createClient();
   const [unread, setUnread] = useState(0);
+  const discard = useSheet<number>();
   const nav = profile.role === "coach" ? coachNav : clientNav;
 
   const refreshUnread = useCallback(async () => {
@@ -87,7 +74,10 @@ export default function AppShell({ profile, children }: { profile: Profile; chil
         await flushPendingSets(supabase);
         await flushPendingMeals(supabase);
         const after = pendingSetCount() + pendingMealCount();
-        if (after < before) window.dispatchEvent(new Event("coachly:synced"));
+        if (after < before) {
+          window.dispatchEvent(new Event("coachly:synced"));
+          notify.success(`${before - after} offline change(s) synced`);
+        }
       }
       setPending(pendingSetCount() + pendingMealCount());
       busy = false;
@@ -111,8 +101,12 @@ export default function AppShell({ profile, children }: { profile: Profile; chil
       await flushPendingSets(supabase);
       await flushPendingMeals(supabase);
       const left = pendingSetCount() + pendingMealCount();
-      if (left && !confirm(`${left} change(s) logged offline haven't synced yet. Logging out now will discard them. Log out anyway?`)) return;
+      if (left) return discard.show(left);
     }
+    await finishSignOut();
+  }
+
+  async function finishSignOut() {
     await clearOfflineData();
     await supabase.auth.signOut();
     router.replace("/login");
@@ -127,6 +121,7 @@ export default function AppShell({ profile, children }: { profile: Profile; chil
           <div className="mb-8 px-2">
             <BrandMark />
           </div>
+          {profile.role === "coach" && <CoachSearch coachId={profile.id} className="mb-3 w-full justify-start border border-line px-3" />}
           <nav className="flex-1 space-y-1" aria-label="Main">
             {nav.map((n) => (
               <Link
@@ -169,6 +164,7 @@ export default function AppShell({ profile, children }: { profile: Profile; chil
             style={{ paddingTop: "max(0.5rem, env(safe-area-inset-top))" }}
           >
             <BrandMark compact />
+            {profile.role === "coach" && <CoachSearch coachId={profile.id} className="ml-auto justify-center" />}
             <button onClick={signOut} className="flex min-h-10 items-center gap-1.5 rounded-lg px-2 text-sm text-muted active:bg-surface-2" aria-label="Log out">
               <LogOut className="size-4" strokeWidth={1.75} aria-hidden /> Log out
             </button>
@@ -213,6 +209,13 @@ export default function AppShell({ profile, children }: { profile: Profile; chil
           })}
         </nav>
       </div>
+      <ConfirmSheet
+        {...discard.bind}
+        title="Log out and discard changes?"
+        description={`${discard.item ?? 0} change(s) logged offline haven't synced yet. Logging out now will discard them. Log out anyway?`}
+        confirmLabel="Log out"
+        onConfirm={finishSignOut}
+      />
     </ProfileContext.Provider>
   );
 }
@@ -220,7 +223,7 @@ export default function AppShell({ profile, children }: { profile: Profile; chil
 function UnreadDot({ count }: { count: number }) {
   return (
     <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1.5 font-mono text-[10px] font-semibold text-white tabular-nums ring-2 ring-surface" aria-label={`${count} unread`}>
-      {count > 99 ? "99+" : count}
+      {count > 99 ? "99+" : <NumberFlow value={count} />}
     </span>
   );
 }

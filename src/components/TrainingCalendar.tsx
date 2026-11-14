@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useAsync, must } from "@/lib/useAsync";
 import { getActivePlan, SESSION_SELECT, sortSession, type Plan, type Session } from "@/lib/data";
 import { adherence, buildDays, monthGrid, streak, TYPE_STYLE, weekDates, type CalDay, type CalSession, type SessionType } from "@/lib/calendar";
-import { Sheet } from "@/components/ExerciseLibrary";
+import { Sheet, useSheet } from "@/components/Sheet";
 import SessionDetail from "@/components/SessionDetail";
 import SessionPrs from "@/components/SessionPrs";
 import { Card, ErrorBox, Skeleton, Spinner } from "@/components/ui";
@@ -52,7 +52,7 @@ export default function TrainingCalendar({ clientId, unit }: { clientId: string;
   const { data, loading, error, reload } = useCalendarData(clientId);
   const today = localDate();
   const [month, setMonth] = useState(today.slice(0, 8) + "01");
-  const [open, setOpen] = useState<CalDay | null>(null);
+  const sheet = useSheet<CalDay>();
 
   const cells = useMemo(() => monthGrid(month), [month]);
   const days = useMemo(
@@ -94,7 +94,7 @@ export default function TrainingCalendar({ clientId, unit }: { clientId: string;
           return (
             <button
               key={date}
-              onClick={() => setOpen(day)}
+              onClick={() => sheet.show(day)}
               aria-label={`${fmtDate(date, { weekday: "long", month: "long", day: "numeric" })}: ${STATUS_TEXT[day.status]}${day.planned ? ` (${day.planned})` : ""}`}
               className={cn(
                 "flex aspect-square min-h-11 flex-col sm:aspect-auto sm:h-14 items-center justify-center gap-1 rounded-xl text-sm tabular-nums hover:bg-surface-2",
@@ -118,7 +118,7 @@ export default function TrainingCalendar({ clientId, unit }: { clientId: string;
       <Legend types={typesSeen} />
       {!data.plan && <p className="text-sm text-muted">No active plan, so rest and missed days can&apos;t be shown yet. Logged workouts still appear.</p>}
 
-      {open && <DaySheet day={open} unit={unit} onClose={() => setOpen(null)} />}
+      <DaySheet sheet={sheet} unit={unit} />
     </Card>
   );
 }
@@ -146,7 +146,16 @@ function Legend({ types }: { types: SessionType[] }) {
 }
 
 /** Tap a day: what was planned, and a summary + full log of each session. */
-function DaySheet({ day, unit, onClose }: { day: CalDay; unit: Unit; onClose: () => void }) {
+function DaySheet({ sheet, unit }: { sheet: ReturnType<typeof useSheet<CalDay>>; unit: Unit }) {
+  const day = sheet.item;
+  return (
+    <Sheet {...sheet.bind} title={day ? fmtDate(day.date, { weekday: "long", month: "long", day: "numeric" }) : ""}>
+      {day && <DayDetail day={day} unit={unit} />}
+    </Sheet>
+  );
+}
+
+function DayDetail({ day, unit }: { day: CalDay; unit: Unit }) {
   const supabase = createClient();
   const ids = day.sessions.map((s) => s.id);
   const { data, loading, error } = useAsync(async () => {
@@ -156,21 +165,19 @@ function DaySheet({ day, unit, onClose }: { day: CalDay; unit: Unit; onClose: ()
   }, [ids.join(",")]);
 
   return (
-    <Sheet title={fmtDate(day.date, { weekday: "long", month: "long", day: "numeric" })} onClose={onClose}>
-      <div className="space-y-4">
-        <p className="flex items-center gap-2 text-sm">
-          <DayMark day={day} size="lg" />
-          <span className="font-semibold">{STATUS_TEXT[day.status]}</span>
-          {day.planned && <span className="text-muted">· plan: {day.planned}</span>}
+    <div className="space-y-4">
+      <p className="flex items-center gap-2 text-sm">
+        <DayMark day={day} size="lg" />
+        <span className="font-semibold">{STATUS_TEXT[day.status]}</span>
+        {day.planned && <span className="text-muted">· plan: {day.planned}</span>}
+      </p>
+      {loading ? <Spinner /> : error ? <ErrorBox message={error} /> : (data ?? []).map((s) => <SessionSummary key={s.id} s={s} unit={unit} />)}
+      {!loading && ids.length === 0 && (
+        <p className="text-sm text-muted">
+          {day.status === "missed" ? "No workout was logged on this planned day." : day.status === "rest" ? "Scheduled rest day." : day.planned ? "Not logged yet." : "No workout logged."}
         </p>
-        {loading ? <Spinner /> : error ? <ErrorBox message={error} /> : (data ?? []).map((s) => <SessionSummary key={s.id} s={s} unit={unit} />)}
-        {!loading && ids.length === 0 && (
-          <p className="text-sm text-muted">
-            {day.status === "missed" ? "No workout was logged on this planned day." : day.status === "rest" ? "Scheduled rest day." : day.planned ? "Not logged yet." : "No workout logged."}
-          </p>
-        )}
-      </div>
-    </Sheet>
+      )}
+    </div>
   );
 }
 
@@ -207,7 +214,7 @@ function Mini({ label, value }: { label: string; value: string }) {
 /** "This week at a glance": Mon–Sun strip with status marks and done / planned count. */
 export function WeekGlance({ clientId, unit, plan: planProp }: { clientId: string; unit: Unit; plan?: Plan | null }) {
   const { data, loading, error, reload } = useCalendarData(clientId);
-  const [open, setOpen] = useState<CalDay | null>(null);
+  const sheet = useSheet<CalDay>();
   const today = localDate();
   if (loading) return <Skeleton className="h-28" />;
   if (error || !data) return <ErrorBox message={error ?? "Couldn't load this week"} onRetry={reload} />;
@@ -222,7 +229,7 @@ export function WeekGlance({ clientId, unit, plan: planProp }: { clientId: strin
       </div>
       <div className="grid grid-cols-7 gap-1">
         {days.map((d) => (
-          <button key={d.date} onClick={() => setOpen(d)}
+          <button key={d.date} onClick={() => sheet.show(d)}
             aria-label={`${fmtDate(d.date, { weekday: "long" })}: ${STATUS_TEXT[d.status]}${d.planned ? ` (${d.planned})` : ""}`}
             className={cn("flex min-h-16 flex-col items-center justify-center gap-1 rounded-xl hover:bg-surface-2", d.date === today && "ring-2 ring-brand")}>
             <span className="text-[11px] font-semibold text-muted uppercase">{WEEKDAYS[Number(new Date(d.date + "T12:00:00").getDay() + 6) % 7].slice(0, 1)}</span>
@@ -231,7 +238,7 @@ export function WeekGlance({ clientId, unit, plan: planProp }: { clientId: strin
           </button>
         ))}
       </div>
-      {open && <DaySheet day={open} unit={unit} onClose={() => setOpen(null)} />}
+      <DaySheet sheet={sheet} unit={unit} />
     </Card>
   );
 }

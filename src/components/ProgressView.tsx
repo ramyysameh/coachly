@@ -1,5 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
+import NumberFlow, { type Format } from "@number-flow/react";
 import { ArrowDownRight, ArrowUpRight, CalendarCheck, Dumbbell, Medal, Scale, SlidersHorizontal, Target, Trophy } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useAsync, must } from "@/lib/useAsync";
@@ -12,6 +13,7 @@ import {
 import { MUSCLES, muscleLabel, type Muscle } from "@/lib/muscles";
 import { BarsChart, TrendChart } from "@/components/Charts";
 import { loadTargets, MuscleTargetsEditor } from "@/components/MuscleHeatMap";
+import { useSheet } from "@/components/Sheet";
 import { Badge, Button, Card, Empty, ErrorBox, NumInput, Select, Skeleton } from "@/components/ui";
 import { addDays, cn, errMsg, fmtDate, fromKg, localDate, toKg, type Unit } from "@/lib/utils";
 
@@ -73,11 +75,14 @@ function Header({ icon, title, sub, action }: { icon: React.ReactNode; title: st
   );
 }
 
-function Tile({ label, value, sub, delta }: { label: string; value: string; sub?: string; delta?: { text: string; up: boolean | null } }) {
+const signed: Format = { maximumFractionDigits: 1, signDisplay: "exceptZero" };
+const oneDecimal: Format = { minimumFractionDigits: 1, maximumFractionDigits: 1 };
+
+function Tile({ label, value, format, suffix, sub, delta }: { label: string; value: number | null; format?: Format; suffix?: string; sub?: string; delta?: { text: string; up: boolean | null } }) {
   return (
     <div className="rounded-xl bg-surface-2 px-3 py-2">
       <p className="text-xs font-medium text-muted">{label}</p>
-      <p className="font-mono text-lg font-semibold tabular-nums">{value}</p>
+      <p className="font-mono text-lg font-semibold tabular-nums">{value === null ? "—" : <NumberFlow value={value} format={format} suffix={suffix} />}</p>
       {delta && (
         <p className="flex items-center gap-0.5 text-[11px] text-muted">
           {delta.up === true && <ArrowUpRight className="size-3.5 text-brand" aria-hidden />}
@@ -95,6 +100,14 @@ const fmtBig = (kg: number, unit: Unit) => {
   return v >= 10000 ? `${(v / 1000).toFixed(1)}k ${unit}` : `${Math.round(v).toLocaleString()} ${unit}`;
 };
 
+/** Total-lifted tile parts: whole units below 10,000, otherwise thousands with one decimal ("12.3k kg"). */
+function big(kg: number, unit: Unit): { value: number; format?: Format; suffix: string } {
+  const v = fromKg(kg, unit) ?? 0;
+  return v >= 10000
+    ? { value: Number((v / 1000).toFixed(1)), format: oneDecimal, suffix: `k ${unit}` }
+    : { value: Math.round(v), suffix: ` ${unit}` };
+}
+
 function delta(cur: number, prev: number, fmt: (n: number) => string = (n) => String(Math.round(n))) {
   if (prev === 0 && cur === 0) return { text: "same as last month", up: null };
   const d = cur - prev;
@@ -106,14 +119,15 @@ function MonthCompare({ data, unit, today }: { data: Data; unit: Unit; today: st
   const m = monthBounds(today);
   const cur: PeriodTotals = periodTotals(m.from, today, data.sessions, data.sets, data.prs);
   const prev: PeriodTotals = periodTotals(m.prevFrom, m.prevTo, data.sessions, data.sets, data.prs);
+  const lifted = big(cur.volumeKg, unit);
   return (
     <Card className="space-y-3">
       <Header icon={<CalendarCheck />} title={`${fmtDate(m.from, { month: "long" })} so far`} sub={`Compared with all of ${fmtDate(m.prevFrom, { month: "long" })}`} />
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <Tile label="Sessions" value={String(cur.sessions)} delta={delta(cur.sessions, prev.sessions)} />
-        <Tile label="Total lifted" value={fmtBig(cur.volumeKg, unit)} delta={delta(cur.volumeKg, prev.volumeKg, (n) => fmtBig(n, unit))} />
-        <Tile label="PRs" value={String(cur.prs)} delta={delta(cur.prs, prev.prs)} />
-        <Tile label="Avg session" value={cur.avgMinutes ? `${Math.round(cur.avgMinutes)} min` : "—"} sub={prev.avgMinutes ? `${Math.round(prev.avgMinutes)} min last month` : undefined} />
+        <Tile label="Sessions" value={cur.sessions} delta={delta(cur.sessions, prev.sessions)} />
+        <Tile label="Total lifted" {...lifted} delta={delta(cur.volumeKg, prev.volumeKg, (n) => fmtBig(n, unit))} />
+        <Tile label="PRs" value={cur.prs} delta={delta(cur.prs, prev.prs)} />
+        <Tile label="Avg session" value={cur.avgMinutes ? Math.round(cur.avgMinutes) : null} suffix=" min" sub={prev.avgMinutes ? `${Math.round(prev.avgMinutes)} min last month` : undefined} />
       </div>
     </Card>
   );
@@ -152,10 +166,10 @@ function Consistency({ data, from, to, today }: { data: Data; from: string; to: 
     <Card className="space-y-3">
       <Header icon={<Target />} title="Consistency" sub={`${fmtDate(from)} – ${fmtDate(to)}`} />
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <Tile label="Adherence" value={planned.length ? `${Math.round((hit / planned.length) * 100)}%` : "—"} sub={planned.length ? `${hit} of ${planned.length} planned` : "no plan in range"} />
-        <Tile label="Missed" value={String(missed)} sub="planned, not logged" />
-        <Tile label="Sessions / week" value={(done.length / nWeeks).toFixed(1)} sub={`${done.length} sessions`} />
-        <Tile label="Avg duration" value={totals.avgMinutes ? `${Math.round(totals.avgMinutes)} min` : "—"} />
+        <Tile label="Adherence" value={planned.length ? Math.round((hit / planned.length) * 100) : null} suffix="%" sub={planned.length ? `${hit} of ${planned.length} planned` : "no plan in range"} />
+        <Tile label="Missed" value={missed} sub="planned, not logged" />
+        <Tile label="Sessions / week" value={Number((done.length / nWeeks).toFixed(1))} format={oneDecimal} sub={`${done.length} sessions`} />
+        <Tile label="Avg duration" value={totals.avgMinutes ? Math.round(totals.avgMinutes) : null} suffix=" min" />
       </div>
       <div>
         <p className="mb-1 text-xs font-medium text-muted">Weekly adherence, last 8 weeks</p>
@@ -217,9 +231,9 @@ function StrengthProgress({ data, unit, from, to }: { data: Data; unit: Unit; fr
           ) : (
             <>
               <div className="grid grid-cols-3 gap-2">
-                <Tile label={weighted ? "Latest est. 1RM" : "Latest best reps"} value={weighted ? `${fromKg(last?.e1rm, unit) ?? "—"} ${unit}` : String(last?.bestReps ?? "—")} />
-                <Tile label="Change in range" value={change === null ? "—" : `${change > 0 ? "+" : change < 0 ? "−" : "±"}${weighted ? `${Math.abs(fromKg(change, unit) ?? 0)} ${unit}` : Math.abs(change)}`} />
-                <Tile label="Best set" value={best ? (weighted ? `${fromKg(best.weight, unit)} × ${best.reps}` : `${best.bestReps} reps`) : "—"} sub={best ? fmtDate(best.date, { month: "short", day: "numeric" }) : undefined} />
+                <Tile label={weighted ? "Latest est. 1RM" : "Latest best reps"} value={weighted ? fromKg(last?.e1rm, unit) : last?.bestReps ?? null} suffix={weighted ? ` ${unit}` : undefined} />
+                <Tile label="Change in range" value={change === null ? null : weighted ? fromKg(change, unit) : change} format={signed} suffix={weighted ? ` ${unit}` : undefined} />
+                <Tile label="Best set" value={best ? (weighted ? fromKg(best.weight, unit) : best.bestReps) : null} suffix={best ? (weighted ? ` × ${best.reps}` : " reps") : undefined} sub={best ? fmtDate(best.date, { month: "short", day: "numeric" }) : undefined} />
               </div>
               <TrendChart data={rows} series={[{ key: "value", label: weighted ? "Est. 1RM" : "Best reps", color: "var(--color-brand)" }]} unit={weighted ? unit : "reps"} digits={weighted ? 1 : 0} />
             </>
@@ -300,7 +314,7 @@ export function prValue(e: PrEvent, unit: Unit) {
 /** Sets per muscle for a week (primary = 1, secondary = 0.5) against the client's weekly targets. */
 function MuscleVolume({ clientId, data, today, canEdit, onSaved }: { clientId: string; data: Data; today: string; canEdit: boolean; onSaved: () => void }) {
   const [period, setPeriod] = useState<"last7" | "prev7" | "avg4">("last7");
-  const [editing, setEditing] = useState(false);
+  const targetsSheet = useSheet<true>();
   const targets = data.targets;
   const custom = MUSCLES.some((m) => targets[m].custom);
   const counts = useMemo(() => {
@@ -329,7 +343,7 @@ function MuscleVolume({ clientId, data, today, canEdit, onSaved }: { clientId: s
               <option value="prev7">7 days before</option>
               <option value="avg4">4-week average</option>
             </Select>
-            {canEdit && <Button size="sm" variant="secondary" onClick={() => setEditing(true)}><SlidersHorizontal className="size-4" /> Set targets</Button>}
+            {canEdit && <Button size="sm" variant="secondary" onClick={() => targetsSheet.show(true)}><SlidersHorizontal className="size-4" /> Set targets</Button>}
           </div>
         }
       />
@@ -361,7 +375,7 @@ function MuscleVolume({ clientId, data, today, canEdit, onSaved }: { clientId: s
         ))}
       </ul>
       <p className="text-[11px] text-muted">Shaded band: each muscle&apos;s target range. Grey bars are under target, teal on track, amber above (possible overload).</p>
-      {editing && <MuscleTargetsEditor clientId={clientId} targets={targets} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); onSaved(); }} />}
+      <MuscleTargetsEditor key={targetsSheet.key} {...targetsSheet.bind} clientId={clientId} targets={targets} onSaved={() => { targetsSheet.close(); onSaved(); }} />
     </Card>
   );
 }
@@ -397,8 +411,8 @@ function BodyWeight({ clientId, unit, entries, canLog, onSaved, from, to }: { cl
       <Header icon={<Scale />} title="Body weight" sub="Dots are weigh-ins; the line is the 7-day average." />
       {latest && (
         <div className="grid grid-cols-2 gap-2">
-          <Tile label="7-day average" value={`${latest.avg7?.toFixed(1)} ${unit}`} />
-          <Tile label="Trend in range" value={firstAvg != null && latest.avg7 != null && rows.length > 1 ? `${latest.avg7 - firstAvg > 0 ? "+" : latest.avg7 - firstAvg < 0 ? "−" : "±"}${Math.abs(latest.avg7 - firstAvg).toFixed(1)} ${unit}` : "—"} />
+          <Tile label="7-day average" value={latest.avg7 ?? null} format={oneDecimal} suffix={` ${unit}`} />
+          <Tile label="Trend in range" value={firstAvg != null && latest.avg7 != null && rows.length > 1 ? latest.avg7 - firstAvg : null} format={signed} suffix={` ${unit}`} />
         </div>
       )}
       {rows.length > 1 ? (

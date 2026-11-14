@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import NumberFlow from "@number-flow/react";
 import { AlertTriangle, Dumbbell, Loader2, RotateCw } from "lucide-react";
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
@@ -171,7 +172,7 @@ export function Meter({ label, value, target, unit }: { label: string; value: nu
       <div className="mb-1.5 flex flex-wrap items-baseline justify-between gap-x-2 text-sm">
         <span className="font-medium text-ink">{label}</span>
         <span className="font-mono text-xs tabular-nums text-muted">
-          <span className={cn("text-sm font-semibold", over ? "text-warn" : "text-ink")}>{Math.round(value)}</span>
+          <span className={cn("text-sm font-semibold", over ? "text-warn" : "text-ink")}><NumberFlow value={Math.round(value)} /></span>
           {target ? `/${target}` : ""} {unit}
         </span>
       </div>

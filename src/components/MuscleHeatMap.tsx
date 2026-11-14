@@ -10,7 +10,7 @@ import {
 } from "@/lib/analytics";
 import { MUSCLES, muscleLabel, type Muscle } from "@/lib/muscles";
 import MuscleMap, { TONE_PATTERN, TonePatterns, type Tone } from "@/components/MuscleMap";
-import { Sheet } from "@/components/ExerciseLibrary";
+import { Sheet, useSheet } from "@/components/Sheet";
 import { Badge, Button, Card, ErrorBox, Field, Input, NumInput, Segmented, Skeleton } from "@/components/ui";
 import { addDays, cn, errMsg, fmtDate, localDate } from "@/lib/utils";
 
@@ -88,7 +88,7 @@ export default function MuscleHeatMap({ clientId, canEditTargets = false, onTarg
   const [custom, setCustom] = useState({ from: addDays(today, -13), to: today });
   const [view, setView] = useState<"front" | "back">("front");
   const [selected, setSelected] = useState<Muscle | null>(null);
-  const [editing, setEditing] = useState(false);
+  const targetsSheet = useSheet<true>();
   const from = range === "custom" ? custom.from : addDays(today, -(Number(range) - 1));
   const to = range === "custom" ? custom.to : today;
   const days = daysIn(from, to);
@@ -118,7 +118,7 @@ export default function MuscleHeatMap({ clientId, canEditTargets = false, onTarg
           <p className="text-xs text-muted">Sets per muscle against the weekly target. Primary muscles count 1 per set, secondary 0.5.</p>
         </div>
         {canEditTargets && data && (
-          <Button size="sm" variant="secondary" onClick={() => setEditing(true)}><SlidersHorizontal className="size-4" /> Set targets</Button>
+          <Button size="sm" variant="secondary" onClick={() => targetsSheet.show(true)}><SlidersHorizontal className="size-4" /> Set targets</Button>
         )}
       </div>
 
@@ -168,9 +168,13 @@ export default function MuscleHeatMap({ clientId, canEditTargets = false, onTarg
             ))}
           </ul>
           <p className="text-[11px] text-muted">{days > 7 ? "Numbers are sets per week (average over the range)." : "Numbers are sets in the last 7 days."} Showing {view} muscles; switch sides for the rest.</p>
-          {editing && (
-            <MuscleTargetsEditor clientId={clientId} targets={data.targets} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); reload({ silent: true }); onTargetsSaved?.(); }} />
-          )}
+          <MuscleTargetsEditor
+            key={targetsSheet.key}
+            {...targetsSheet.bind}
+            clientId={clientId}
+            targets={data.targets}
+            onSaved={() => { targetsSheet.close(); reload({ silent: true }); onTargetsSaved?.(); }}
+          />
         </>
       )}
     </Card>
@@ -212,7 +216,10 @@ function MuscleDetail({ stat, target, days, exercises }: { stat: MuscleStat; tar
 }
 
 /** Coach edits weekly set targets per muscle; rows left at the default aren't stored. */
-export function MuscleTargetsEditor({ clientId, targets, onClose, onSaved }: { clientId: string; targets: MuscleTargets; onClose: () => void; onSaved: () => void }) {
+/** Bottom sheet for a client's weekly set targets. Key it on the sheet's `key` so each open starts from `targets`. */
+export function MuscleTargetsEditor({ clientId, targets, open, onOpenChange, onClosed, onSaved }: {
+  clientId: string; targets: MuscleTargets; open: boolean; onOpenChange: (open: boolean) => void; onClosed?: () => void; onSaved: () => void;
+}) {
   const supabase = createClient();
   const [f, setF] = useState(() => Object.fromEntries(MUSCLES.map((m) => [m, { min: String(targets[m].min), max: String(targets[m].max) }])) as Record<Muscle, { min: string; max: string }>);
   const [err, setErr] = useState<string | null>(null);
@@ -244,12 +251,14 @@ export function MuscleTargetsEditor({ clientId, targets, onClose, onSaved }: { c
 
   return (
     <Sheet
+      open={open}
+      onOpenChange={onOpenChange}
+      onClosed={onClosed}
       title="Weekly set targets"
-      onClose={onClose}
       footer={
         <div className="flex flex-wrap items-center justify-end gap-2">
           <Button variant="ghost" onClick={reset} className="mr-auto">Reset all to {DEFAULT_TARGET.min}–{DEFAULT_TARGET.max}</Button>
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button onClick={save} loading={saving}>Save targets</Button>
         </div>
       }

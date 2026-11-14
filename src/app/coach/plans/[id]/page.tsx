@@ -5,14 +5,17 @@ import { ArrowDown, ArrowUp, ChevronLeft, Info, Plus, Trash2, X } from "lucide-r
 import { createClient } from "@/lib/supabase/client";
 import { useAsync, must } from "@/lib/useAsync";
 import { PLAN_SELECT, sortPlan, type Exercise, type Plan, type PlanDay, type PlanExercise } from "@/lib/data";
-import { ExerciseBrowser, ExerciseThumb, Sheet, useLibrary } from "@/components/ExerciseLibrary";
+import { ExerciseBrowser, ExerciseThumb, useLibrary } from "@/components/ExerciseLibrary";
+import { ConfirmSheet, Sheet, useSheet } from "@/components/Sheet";
 import { Badge, Button, Card, Empty, ErrorBox, Field, Input, NumInput, Spinner, Textarea } from "@/components/ui";
 import { cn, errMsg, fmtDate, WEEKDAYS } from "@/lib/utils";
+import { notify } from "@/lib/notify";
 
 export default function PlanBuilderPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const supabase = createClient();
-  const [pickerFor, setPickerFor] = useState<PlanDay | null>(null);
+  const picker = useSheet<PlanDay>();
+  const deleting = useSheet<PlanDay>();
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState(false);
 
@@ -31,8 +34,10 @@ export default function PlanBuilderPage({ params }: { params: Promise<{ id: stri
     setSaveError(null);
     const results = await Promise.all([fn()].flat());
     const failed = results.find((r) => r.error);
-    if (failed?.error) setSaveError(errMsg(failed.error));
-    else setSavedAt(true);
+    if (failed?.error) {
+      notify.error(errMsg(failed.error));
+      setSavedAt(false);
+    } else setSavedAt(true);
     await reload({ silent: true });
     return !failed;
   }
@@ -103,7 +108,8 @@ export default function PlanBuilderPage({ params }: { params: Promise<{ id: stri
           write={write}
           onMove={(dir) => move("plan_days", plan.plan_days, di, dir)}
           onMoveExercise={(i, dir) => move("plan_exercises", day.plan_exercises, i, dir)}
-          onAddExercise={() => setPickerFor(day)}
+          onAddExercise={() => picker.show(day)}
+          onDelete={() => deleting.show(day)}
         />
       ))}
 
@@ -115,35 +121,49 @@ export default function PlanBuilderPage({ params }: { params: Promise<{ id: stri
         <Plus className="size-4" /> Add workout day
       </Button>
 
-      {pickerFor && (
-        <ExercisePicker
-          onClose={() => setPickerFor(null)}
-          onPick={async (ex) => {
-            const day = pickerFor;
-            setPickerFor(null);
-            await write(() =>
-              supabase.from("plan_exercises").insert({
-                plan_day_id: day.id,
-                exercise_id: ex.id,
-                position: day.plan_exercises.length,
-                target_sets: 3,
-                rep_min: ex.is_bodyweight ? 8 : 8,
-                rep_max: ex.is_bodyweight ? 15 : 12,
-                rest_seconds: 90,
-              }),
-            );
-          }}
-        />
-      )}
+      <ConfirmSheet
+        {...deleting.bind}
+        title="Delete day?"
+        description={deleting.item ? `Delete "${deleting.item.name}" and its exercises? Logged workouts are kept.` : undefined}
+        confirmLabel="Delete day"
+        onConfirm={async () => {
+          const day = deleting.item!;
+          // ConfirmSheet toasts a thrown error, so don't go through write() (it toasts too).
+          const { error } = await supabase.from("plan_days").delete().eq("id", day.id);
+          if (error) throw error;
+          setSavedAt(true);
+          await reload({ silent: true });
+        }}
+      />
+
+      <ExercisePicker
+        {...picker.bind}
+        onPick={async (ex) => {
+          const day = picker.item;
+          if (!day) return;
+          picker.close();
+          await write(() =>
+            supabase.from("plan_exercises").insert({
+              plan_day_id: day.id,
+              exercise_id: ex.id,
+              position: day.plan_exercises.length,
+              target_sets: 3,
+              rep_min: ex.is_bodyweight ? 8 : 8,
+              rep_max: ex.is_bodyweight ? 15 : 12,
+              rest_seconds: 90,
+            }),
+          );
+        }}
+      />
     </div>
   );
 }
 
 type WriteFn = (fn: () => PromiseLike<{ error: { message: string } | null }>[] | PromiseLike<{ error: { message: string } | null }>) => Promise<boolean>;
 
-function DayCard({ day, first, last, write, onMove, onMoveExercise, onAddExercise }: {
+function DayCard({ day, first, last, write, onMove, onMoveExercise, onAddExercise, onDelete }: {
   day: PlanDay; first: boolean; last: boolean; write: WriteFn;
-  onMove: (dir: -1 | 1) => void; onMoveExercise: (i: number, dir: -1 | 1) => void; onAddExercise: () => void;
+  onMove: (dir: -1 | 1) => void; onMoveExercise: (i: number, dir: -1 | 1) => void; onAddExercise: () => void; onDelete: () => void;
 }) {
   const supabase = createClient();
   function toggleDay(w: number) {
@@ -166,7 +186,7 @@ function DayCard({ day, first, last, write, onMove, onMoveExercise, onAddExercis
         />
         <IconBtn label="Move day up" disabled={first} onClick={() => onMove(-1)}><ArrowUp className="size-4" /></IconBtn>
         <IconBtn label="Move day down" disabled={last} onClick={() => onMove(1)}><ArrowDown className="size-4" /></IconBtn>
-        <IconBtn label="Delete day" danger onClick={() => confirm(`Delete "${day.name}" and its exercises? Logged workouts are kept.`) && write(() => supabase.from("plan_days").delete().eq("id", day.id))}>
+        <IconBtn label="Delete day" danger onClick={onDelete}>
           <Trash2 className="size-4" />
         </IconBtn>
       </div>
@@ -211,6 +231,14 @@ function ExerciseRow({ pe, first, last, write, onMove }: { pe: PlanExercise; fir
     if (v !== pe[field]) write(() => supabase.from("plan_exercises").update({ [field]: v }).eq("id", pe.id));
   }
 
+  async function removeExercise() {
+    if (!(await write(() => supabase.from("plan_exercises").delete().eq("id", pe.id)))) return;
+    // The joined exercise is not a plan_exercises column.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { exercises, ...row } = pe;
+    notify.undo("Exercise removed", async () => { await write(() => supabase.from("plan_exercises").insert(row)); });
+  }
+
   const k = `${pe.id}-${pe.target_sets}-${pe.rep_min}-${pe.rep_max}-${pe.rest_seconds}`;
   return (
     <li className="p-3">
@@ -222,7 +250,7 @@ function ExerciseRow({ pe, first, last, write, onMove }: { pe: PlanExercise; fir
         </p>
         <IconBtn label="Move exercise up" disabled={first} onClick={() => onMove(-1)}><ArrowUp className="size-4" /></IconBtn>
         <IconBtn label="Move exercise down" disabled={last} onClick={() => onMove(1)}><ArrowDown className="size-4" /></IconBtn>
-        <IconBtn label="Remove exercise" danger onClick={() => write(() => supabase.from("plan_exercises").delete().eq("id", pe.id))}><X className="size-4" /></IconBtn>
+        <IconBtn label="Remove exercise" danger onClick={removeExercise}><X className="size-4" /></IconBtn>
       </div>
       <div className="mt-2 grid grid-cols-4 gap-2" key={k}>
         <Field label="Sets"><NumInput defaultValue={pe.target_sets} onBlur={(e) => saveNum("target_sets", e.target.value, 1, 20)} /></Field>
@@ -246,13 +274,18 @@ function IconBtn({ label, onClick, disabled, danger, children }: { label: string
   );
 }
 
-function ExercisePicker({ onClose, onPick }: { onClose: () => void; onPick: (ex: Exercise) => void }) {
-  const { data, loading, error, reload } = useLibrary();
+function ExercisePicker({ onPick, ...bind }: { open: boolean; onOpenChange: (open: boolean) => void; onClosed: () => void; onPick: (ex: Exercise) => void }) {
   return (
-    <Sheet title="Exercise library" onClose={onClose}>
-      {loading ? <Spinner /> : error || !data ? <ErrorBox message={error ?? "Couldn't load the library"} onRetry={reload} /> : (
-        <ExerciseBrowser lib={data} onPick={onPick} canCreate compact onCreated={() => reload({ silent: true })} />
-      )}
+    <Sheet {...bind} title="Exercise library">
+      <PickerBody onPick={onPick} />
     </Sheet>
   );
+}
+
+/** Mounted only while the picker is open, so the library loads fresh each time. */
+function PickerBody({ onPick }: { onPick: (ex: Exercise) => void }) {
+  const { data, loading, error, reload } = useLibrary();
+  if (loading) return <Spinner />;
+  if (error || !data) return <ErrorBox message={error ?? "Couldn't load the library"} onRetry={reload} />;
+  return <ExerciseBrowser lib={data} onPick={onPick} canCreate compact nested onCreated={() => reload({ silent: true })} />;
 }

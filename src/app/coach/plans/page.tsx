@@ -8,6 +8,8 @@ import { useAsync, must } from "@/lib/useAsync";
 import { useProfile } from "@/components/AppShell";
 import { Button, Card, Empty, ErrorBox, Field, Input, PageHeader, Select, Spinner } from "@/components/ui";
 import { errMsg, WEEKDAYS } from "@/lib/utils";
+import { notify } from "@/lib/notify";
+import { ConfirmSheet, useSheet } from "@/components/Sheet";
 
 type Row = { id: string; name: string; description: string | null; plan_days: { name: string; weekdays: number[]; plan_exercises: { id: string }[] }[] };
 
@@ -26,6 +28,7 @@ export default function PlansPage() {
   const [preset, setPreset] = useState("ppl");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const removing = useSheet<Row>();
 
   const { data, loading, error: loadError, reload } = useAsync(
     async () => must(await supabase.from("plans").select("id, name, description, plan_days(name, weekdays, position, plan_exercises(id))").eq("coach_id", profile.id).is("client_id", null).order("created_at", { ascending: false })) as Row[],
@@ -51,14 +54,14 @@ export default function PlansPage() {
 
   async function duplicate(r: Row) {
     const { data: id, error } = await supabase.rpc("copy_plan", { p_source: r.id, p_name: `${r.name} (copy)` });
-    if (error) return alert(errMsg(error));
+    if (error) return notify.error(errMsg(error));
+    notify.success("Template duplicated");
     router.push(`/coach/plans/${id}`);
   }
 
   async function remove(r: Row) {
-    if (!confirm(`Delete template "${r.name}"? Plans already assigned to clients are not affected.`)) return;
     const { error } = await supabase.from("plans").delete().eq("id", r.id);
-    if (error) return alert(errMsg(error));
+    if (error) throw error;
     reload({ silent: true });
   }
 
@@ -102,12 +105,20 @@ export default function PlansPage() {
               </Link>
               <div className="flex gap-1 border-t border-line p-2">
                 <Button size="sm" variant="ghost" onClick={() => duplicate(r)}><Copy className="size-4" /> Duplicate</Button>
-                <Button size="sm" variant="ghost" className="ml-auto text-danger" onClick={() => remove(r)}><Trash2 className="size-4" /> Delete</Button>
+                <Button size="sm" variant="ghost" className="ml-auto text-danger" aria-label={`Delete ${r.name}`} onClick={() => removing.show(r)}><Trash2 className="size-4" /> Delete</Button>
               </div>
             </li>
           ))}
         </ul>
       )}
+
+      <ConfirmSheet
+        {...removing.bind}
+        title="Delete template?"
+        description={removing.item ? `Delete template "${removing.item.name}"? Plans already assigned to clients are not affected.` : undefined}
+        confirmLabel="Delete"
+        onConfirm={() => remove(removing.item!)}
+      />
     </div>
   );
 }

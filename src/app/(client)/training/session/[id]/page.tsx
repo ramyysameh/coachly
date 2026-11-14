@@ -1,6 +1,7 @@
 "use client";
 import { use, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import NumberFlow from "@number-flow/react";
 import { useRouter } from "next/navigation";
 import { Check, ChevronLeft, Minus, Plus, Timer, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -8,6 +9,7 @@ import { useAsync, must } from "@/lib/useAsync";
 import { SESSION_SELECT, sortSession, type Session, type SessionExercise, type SessionSet } from "@/lib/data";
 import { useProfile } from "@/components/AppShell";
 import { Badge, Button, ErrorBox, Spinner, Textarea } from "@/components/ui";
+import { notify } from "@/lib/notify";
 import { cn, errMsg, fmtDate, fmtRest, fromKg, toKg, type Unit } from "@/lib/utils";
 import { clearSetPatch, flushPendingSets, pendingPatchesFor, queueSetPatch } from "@/lib/pendingSets";
 
@@ -85,14 +87,17 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-xl font-semibold">{session.name}</h1>
           <p className="text-xs text-muted">
-            {fmtDate(session.scheduled_date)} · {doneSets}/{allSets.length} sets
+            {fmtDate(session.scheduled_date)} · <NumberFlow value={doneSets} />/{allSets.length} sets
           </p>
         </div>
         {completed ? <Badge tone="brand">Completed</Badge> : <Badge tone="warn">In progress</Badge>}
       </div>
 
       <div className="h-1.5 overflow-hidden rounded-full bg-line" aria-hidden>
-        <div className="h-full bg-brand transition-all" style={{ width: `${allSets.length ? (doneSets / allSets.length) * 100 : 0}%` }} />
+        <div
+          className="h-full w-full origin-left bg-brand transition-transform duration-300 ease-out"
+          style={{ transform: `scaleX(${allSets.length ? doneSets / allSets.length : 0})` }}
+        />
       </div>
 
       {completed && (
@@ -155,12 +160,10 @@ function ExerciseCard({
   const supabase = createClient();
   const [notes, setNotes] = useState(ex.client_notes ?? "");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const prevBySet = useMemo(() => Object.fromEntries((prev ?? []).map((p) => [p.set_number, p])), [prev]);
 
   async function addSet() {
     setBusy(true);
-    setError(null);
     const next = (ex.session_sets.at(-1)?.set_number ?? 0) + 1;
     const { data, error } = await supabase
       .from("session_sets")
@@ -168,7 +171,7 @@ function ExerciseCard({
       .select()
       .single();
     setBusy(false);
-    if (error) return setError(errMsg(error));
+    if (error) return notify.error(errMsg(error));
     onSetsReplaced([...ex.session_sets, data as SessionSet]);
   }
 
@@ -176,17 +179,16 @@ function ExerciseCard({
     const last = ex.session_sets.at(-1);
     if (!last) return;
     setBusy(true);
-    setError(null);
     const { error } = await supabase.from("session_sets").delete().eq("id", last.id);
     setBusy(false);
-    if (error) return setError(errMsg(error));
+    if (error) return notify.error(errMsg(error));
     onSetsReplaced(ex.session_sets.slice(0, -1));
   }
 
   async function saveNotes() {
     if ((ex.client_notes ?? "") === notes) return;
     const { error } = await supabase.from("session_exercises").update({ client_notes: notes || null }).eq("id", ex.id);
-    if (error) setError(errMsg(error));
+    if (error) notify.error(errMsg(error));
   }
 
   const lastTime = prev?.length ? prev.map((p) => `${p.weight_kg != null ? fromKg(p.weight_kg, unit) : "BW"}×${p.reps ?? "-"}`).join(", ") : null;
@@ -237,7 +239,6 @@ function ExerciseCard({
       <div className="px-3 pb-3">
         <Textarea placeholder="Notes for this exercise (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} onBlur={saveNotes} rows={1} className="min-h-11 text-sm" />
       </div>
-      {error && <p className="px-3 pb-3 text-sm text-danger" role="alert">{error}</p>}
     </section>
   );
 }

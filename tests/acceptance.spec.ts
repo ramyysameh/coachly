@@ -88,7 +88,7 @@ test("2. coach assigns a split; the correct workout appears on the client's Toda
   await expect(coach.getByText(`Assigned to ${client.name}`)).toBeVisible();
 
   // Find the day scheduled today; on Sunday (unscheduled in the template) schedule Push.
-  const days = coach.locator("section[aria-label]");
+  const days = coach.locator("main section[aria-label]");
   const n = await days.count();
   for (let i = 0; i < n; i++) {
     const pressed = await days.nth(i).getByRole("button", { name: WEEKDAYS[todayIso - 1], exact: true }).getAttribute("aria-pressed");
@@ -109,7 +109,7 @@ test("3. client logs sets, closes the app mid-session, resumes, completes; coach
   await cli.getByRole("button", { name: "Start Workout" }).click();
   await cli.waitForURL(/\/training\/session\//);
   const sessionUrl = cli.url();
-  const first = cli.locator("section[aria-label]").first();
+  const first = cli.locator("main section[aria-label]").first();
   firstExercise = (await first.getAttribute("aria-label"))!;
   originalTarget = (await first.locator("h2 + span").textContent())!.split("·")[0].trim(); // e.g. "4 × 5-8"
 
@@ -133,7 +133,7 @@ test("3. client logs sets, closes the app mid-session, resumes, completes; coach
   await cli.goto("/today");
   await cli.getByRole("button", { name: "Resume workout" }).click();
   await cli.waitForURL(sessionUrl);
-  const again = cli.locator("section[aria-label]").first();
+  const again = cli.locator("main section[aria-label]").first();
   await expect(again.getByLabel("Set 1 weight in lb")).toHaveValue("135");
   await expect(again.getByLabel("Set 1 reps")).toHaveValue("8");
   await expect(again.getByRole("button", { name: "Mark set 2 not done" })).toBeVisible();
@@ -171,7 +171,7 @@ test("4. coach updates a future workout; the completed workout keeps original ta
   await cli.goto("/training");
   await cli.getByRole("tab", { name: "History" }).click();
   await cli.getByRole("link", { name: new RegExp(workoutDay) }).first().click();
-  const first = cli.locator("section[aria-label]").first();
+  const first = cli.locator("main section[aria-label]").first();
   await expect(first).toContainText(originalTarget);
   await expect(first.getByLabel("Set 1 weight in lb")).toHaveValue("135");
 
@@ -199,7 +199,7 @@ test("5. client logs and edits a meal; totals update and the coach sees the revi
   await dialog.getByLabel("Fat g").fill("15");
   await dialog.getByRole("button", { name: "Add food" }).click();
   await expect(cli.getByText("Test chicken bowl")).toBeVisible();
-  await expect(cli.getByText(/^600$/).first()).toBeVisible(); // calories total
+  await expect(cli.getByRole("progressbar", { name: "Calories" })).toHaveAttribute("aria-valuenow", "600"); // calories total (NumberFlow digits are not plain text)
 
   await cli.getByRole("button", { name: "Edit Test chicken bowl" }).click();
   const edit = cli.getByRole("dialog", { name: "Edit food" });
@@ -207,7 +207,7 @@ test("5. client logs and edits a meal; totals update and the coach sees the revi
   await edit.getByLabel("Calories (kcal)").fill("750");
   await edit.getByRole("button", { name: "Save changes" }).click();
   await expect(cli.getByText("Test chicken bowl (large)")).toBeVisible();
-  await expect(cli.getByText(/^750$/).first()).toBeVisible();
+  await expect(cli.getByRole("progressbar", { name: "Calories" })).toHaveAttribute("aria-valuenow", "750");
 
   await coach.goto(`/coach/clients/${clientId}?tab=nutrition`);
   await coach.getByRole("textbox", { name: "Calories", exact: true }).fill("2400");

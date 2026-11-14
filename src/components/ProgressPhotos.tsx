@@ -4,6 +4,7 @@ import { Camera, ImagePlus, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useAsync, must } from "@/lib/useAsync";
 import { Button, Card, Empty, ErrorBox, Field, Input, Segmented, Select, Skeleton } from "@/components/ui";
+import { ConfirmSheet, useSheet } from "@/components/Sheet";
 import { errMsg, fmtDate, localDate } from "@/lib/utils";
 
 export type Pose = "front" | "side" | "back";
@@ -170,14 +171,16 @@ function Compare({ photos, dates }: { photos: Photo[]; dates: string[] }) {
 
 function Gallery({ photos, dates, canDelete, onDeleted }: { photos: Photo[]; dates: string[]; canDelete: boolean; onDeleted: () => void }) {
   const supabase = createClient();
+  const deleting = useSheet<Photo>();
+  // ConfirmSheet toasts a thrown error and stays open.
   async function remove(p: Photo) {
-    if (!confirm(`Delete the ${POSE_LABEL[p.pose].toLowerCase()} photo from ${fmtDate(p.taken_on)}? This can't be undone.`)) return;
     const { error } = await supabase.from("progress_photos").delete().eq("id", p.id);
-    if (error) return alert(errMsg(error));
+    if (error) throw error;
     await supabase.storage.from(BUCKET).remove([p.storage_path]);
     onDeleted();
   }
   return (
+    <>
     <ul className="space-y-3" aria-label="Photos by date">
       {dates.map((d) => (
         <li key={d}>
@@ -189,7 +192,7 @@ function Gallery({ photos, dates, canDelete, onDeleted }: { photos: Photo[]; dat
                 <div key={pose} className="relative">
                   <PhotoBox photo={p} label={POSE_LABEL[pose]} />
                   {p && canDelete && (
-                    <button onClick={() => remove(p)} aria-label={`Delete ${POSE_LABEL[pose]} photo from ${fmtDate(d)}`}
+                    <button onClick={() => deleting.show(p)} aria-label={`Delete ${POSE_LABEL[pose]} photo from ${fmtDate(d)}`}
                       className="absolute top-1 right-1 flex size-9 items-center justify-center rounded-lg bg-surface/90 text-muted shadow-card hover:text-danger">
                       <Trash2 className="size-4" />
                     </button>
@@ -201,5 +204,13 @@ function Gallery({ photos, dates, canDelete, onDeleted }: { photos: Photo[]; dat
         </li>
       ))}
     </ul>
+    <ConfirmSheet
+      {...deleting.bind}
+      title="Delete photo?"
+      description={deleting.item ? `Delete the ${POSE_LABEL[deleting.item.pose].toLowerCase()} photo from ${fmtDate(deleting.item.taken_on)}? This can't be undone.` : undefined}
+      confirmLabel="Delete photo"
+      onConfirm={() => remove(deleting.item!)}
+    />
+    </>
   );
 }
