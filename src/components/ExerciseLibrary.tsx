@@ -7,6 +7,7 @@ import { EXERCISE_SELECT, type Exercise, type Movement, type Pattern } from "@/l
 import { ANGLES, cap, EQUIPMENT, GRIPS, MUSCLES, muscleLabel, PATTERNS, type Muscle } from "@/lib/muscles";
 import { useProfile } from "@/components/AppShell";
 import MuscleMap, { bestView, exerciseTones } from "@/components/MuscleMap";
+import { ExerciseCommand } from "@/components/ExerciseCommand";
 import { Sheet, useSheet } from "@/components/Sheet";
 import { Badge, Button, ErrorBox, Field, Input, Select, Spinner, Textarea } from "@/components/ui";
 import { cn, errMsg } from "@/lib/utils";
@@ -48,13 +49,13 @@ function group(list: Exercise[]) {
   return [...map.entries()].sort(([a], [b]) => (a === "Other" ? 1 : b === "Other" ? -1 : a.localeCompare(b)));
 }
 
-function FilterBar({ f, setF }: { f: Filters; setF: (f: Filters) => void }) {
+function FilterBar({ f, setF, hideSearch }: { f: Filters; setF: (f: Filters) => void; hideSearch?: boolean }) {
   return (
     <div className="space-y-2">
-      <div className="relative">
+      {!hideSearch && <div className="relative">
         <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted" aria-hidden />
         <Input className="pl-9" placeholder="Search exercises" value={f.q} onChange={(e) => setF({ ...f, q: e.target.value })} aria-label="Search exercises" />
-      </div>
+      </div>}
       <div className="grid grid-cols-3 gap-2">
         <Select aria-label="Muscle" value={f.muscle} onChange={(e) => setF({ ...f, muscle: e.target.value })}>
           <option value="">All muscles</option>
@@ -86,7 +87,7 @@ export function ExerciseThumb({ ex, className }: { ex: Exercise; className?: str
   );
 }
 
-function variantLabel(e: Exercise) {
+export function variantLabel(e: Exercise) {
   return [e.equipment, e.angle && cap(e.angle), e.grip && `${e.grip} grip`, e.unilateral && "single-arm/leg"].filter(Boolean).join(" · ");
 }
 
@@ -365,7 +366,7 @@ export function ExerciseBrowser({ lib, onPick, canCreate, onCreated, compact, ne
   const detail = useSheet<Exercise>();
   const [history, setHistory] = useState<Exercise[]>([]);
   const create = useSheet<string>();
-  const list = useMemo(() => lib.exercises.filter((e) => matches(e, f)), [lib.exercises, f]);
+  const list = useMemo(() => lib.exercises.filter((e) => matches(e, onPick ? { ...f, q: "" } : f)), [lib.exercises, f, onPick]);
 
   const openEx = (e: Exercise) => { setHistory(detail.open && detail.item ? [...history, detail.item] : []); detail.show(e); };
   const back = () => { detail.show(history[history.length - 1]); setHistory(history.slice(0, -1)); };
@@ -373,9 +374,15 @@ export function ExerciseBrowser({ lib, onPick, canCreate, onCreated, compact, ne
 
   return (
     <div className="space-y-3">
-      <FilterBar f={f} setF={setF} />
-      <p className="px-1 text-xs text-muted">{list.length} of {lib.exercises.length} exercises</p>
-      <div className={cn(compact && "-mx-2")}><ExerciseList list={list} onOpen={openEx} onPick={onPick} /></div>
+      <FilterBar f={f} setF={setF} hideSearch={!!onPick} />
+      {onPick ? (
+        <div className={cn(compact && "-mx-2")}><ExerciseCommand exercises={list} onPick={onPick} onInfo={openEx} /></div>
+      ) : (
+        <>
+          <p className="px-1 text-xs text-muted">{list.length} of {lib.exercises.length} exercises</p>
+          <div className={cn(compact && "-mx-2")}><ExerciseList list={list} onOpen={openEx} /></div>
+        </>
+      )}
       {canCreate && (
         <Button variant="secondary" className="w-full" onClick={() => create.show(f.q)}><Plus className="size-4" /> Create custom exercise</Button>
       )}

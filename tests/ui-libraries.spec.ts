@@ -222,6 +222,36 @@ async function openPicker(page: Page) {
   return page.getByRole("dialog", { name: "Exercise library" });
 }
 
+test("picker fuzzy-matches and adds with the keyboard", async ({ browser }) => {
+  const page = await phone(browser, "coach@demo.test");
+  await openFirstTemplate(page);
+  // The picker opens from the first day's "Add exercise"; the added row lands at the end of that day's list.
+  const addBtn = page.getByRole("button", { name: "Add exercise" }).first();
+  // Only real exercise rows (with a Remove button), so an empty-state <li> can't skew the count or cleanup.
+  const rows = addBtn.locator("xpath=preceding-sibling::ul[1]/li").filter({ has: page.getByRole("button", { name: "Remove exercise" }) });
+  const removeBtn = (n: number) => rows.nth(n).getByRole("button", { name: "Remove exercise" });
+  await expect(rows.first()).toBeVisible();
+  const before = await rows.count();
+  try {
+    await addBtn.click();
+    const picker = page.getByRole("dialog", { name: "Exercise library" });
+    await picker.getByLabel("Search exercises").fill("dumb incl");
+    // [cmdk-list]: the filter selects' <option>s also have the option role.
+    const options = picker.locator("[cmdk-list]").getByRole("option");
+    await expect(options.first()).toContainText("Incline Dumbbell Press");
+    await page.keyboard.press("Enter");
+    await expect(picker).toHaveCount(0);
+    await expect(rows).toHaveCount(before + 1);
+    await expect(rows.last()).toContainText("Incline Dumbbell Press");
+  } finally {
+    // Remove exactly the row this test added, so seed data is unchanged.
+    if (await page.getByRole("dialog", { name: "Exercise library" }).count()) await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog", { name: "Exercise library" })).toHaveCount(0);
+    if ((await rows.count()) > before) await removeBtn(before).click();
+    await expect(rows).toHaveCount(before);
+  }
+});
+
 test("Escape closes only the top sheet", async ({ browser }) => {
   const page = await phone(browser, "coach@demo.test");
   const picker = await openPicker(page);
