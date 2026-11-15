@@ -8,6 +8,7 @@ import { adherence, buildDays, monthGrid, streak, TYPE_STYLE, weekDates, type Ca
 import { Sheet, useSheet } from "@/components/Sheet";
 import SessionDetail from "@/components/SessionDetail";
 import SessionPrs from "@/components/SessionPrs";
+import { isWorkingSet } from "@/lib/setTypes";
 import { Card, ErrorBox, Skeleton, Spinner } from "@/components/ui";
 import { addDays, cn, fmtDate, fmtWeight, localDate, WEEKDAYS, type Unit } from "@/lib/utils";
 
@@ -183,7 +184,7 @@ function DayDetail({ day, unit }: { day: CalDay; unit: Unit }) {
 
 function SessionSummary({ s, unit }: { s: Session; unit: Unit }) {
   const sets = (s.session_exercises ?? []).flatMap((e) => e.session_sets.filter((x) => x.completed));
-  const volume = sets.reduce((t, x) => t + Number(x.weight_kg ?? 0) * Number(x.reps ?? 0), 0);
+  const volume = sets.filter(isWorkingSet).reduce((t, x) => t + Number(x.weight_kg ?? 0) * Number(x.reps ?? 0), 0);
   const mins = s.completed_at ? Math.round((new Date(s.completed_at).getTime() - new Date(s.started_at).getTime()) / 60000) : null;
   return (
     <section className="space-y-3">

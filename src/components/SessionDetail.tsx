@@ -1,6 +1,7 @@
 "use client";
 import type { Session } from "@/lib/data";
-import { fmtWeight, type Unit } from "@/lib/utils";
+import { SET_TYPE_TONE, setLabels, setTypeInfo } from "@/lib/setTypes";
+import { cn, fmtWeight, type Unit } from "@/lib/utils";
 
 /** Read-only view of a logged session: targets as prescribed at the time + what was done. */
 export default function SessionDetail({ session, unit }: { session: Session; unit: Unit }) {
@@ -26,9 +27,12 @@ export default function SessionDetail({ session, unit }: { session: Session; uni
               </tr>
             </thead>
             <tbody>
-              {ex.session_sets.map((s) => (
+              {ex.session_sets.map((s, i) => (
                 <tr key={s.id} className="border-t border-line/60 tabular-nums">
-                  <td className="px-3 py-1.5">{s.set_number}</td>
+                  <td className={cn("px-3 py-1.5", s.set_type !== "normal" && cn("font-semibold", SET_TYPE_TONE[s.set_type]))}
+                    title={s.set_type !== "normal" ? setTypeInfo(s.set_type).label : undefined}>
+                    {setLabels(ex.session_sets)[i]}
+                  </td>
                   <td className="px-3 py-1.5">{s.weight_kg != null ? fmtWeight(s.weight_kg, unit) : ex.is_bodyweight ? "Bodyweight" : "-"}</td>
                   <td className="px-3 py-1.5">{s.reps ?? "-"}</td>
                   <td className="px-3 py-1.5">{s.completed ? <span className="text-brand-dark">✓ Done</span> : <span className="text-muted">Not done</span>}</td>
