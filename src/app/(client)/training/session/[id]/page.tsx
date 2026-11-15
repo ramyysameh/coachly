@@ -3,12 +3,14 @@ import { use, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactN
 import Link from "next/link";
 import NumberFlow from "@number-flow/react";
 import { useRouter } from "next/navigation";
-import { Calculator, Check, ChevronLeft, Flame, Minus, Plus, Timer, X } from "lucide-react";
+import { ArrowLeftRight, Calculator, Check, ChevronLeft, Flame, Link2, Minus, Plus, Timer, X } from "lucide-react";
+import { fmtDuration, parseDuration, supersetRuns } from "@/lib/workout";
+import { ExerciseBrowser, useLibrary } from "@/components/ExerciseLibrary";
 import { BAR_OPTIONS, PLATES, platesPerSide, RPE_CHOICES, warmupRamp } from "@/lib/gymMath";
 import { createClient } from "@/lib/supabase/client";
 import { playChime, primeChime } from "@/lib/chime";
 import { useAsync, must } from "@/lib/useAsync";
-import { SESSION_SELECT, sortSession, type Session, type SessionExercise, type SessionSet, type SetType } from "@/lib/data";
+import { SESSION_SELECT, sortSession, type Exercise, type Session, type SessionExercise, type SessionSet, type SetType } from "@/lib/data";
 import { useProfile } from "@/components/AppShell";
 import { Badge, Button, ErrorBox, Field, NumInput, Spinner, Textarea } from "@/components/ui";
 import { ConfirmSheet, Sheet } from "@/components/Sheet";
@@ -19,7 +21,14 @@ import { isWorkingSet, SET_TYPE_TONE, SET_TYPES, setLabels, setTypeInfo } from "
 import { addDays, cn, errMsg, fmtDate, fmtRest, fromKg, localDate, toKg, type Unit } from "@/lib/utils";
 import { clearSetPatch, flushPendingSets, pendingPatchesFor, queueSetPatch } from "@/lib/pendingSets";
 
-type Prev = { exercise_id: string; performed_on: string; set_number: number; reps: number | null; weight_kg: number | null; set_type?: SetType };
+type Prev = { exercise_id: string; performed_on: string; set_number: number; reps: number | null; weight_kg: number | null; set_type?: SetType; duration_s?: number | null };
+
+/** "80×8", "BW×12", or for timed exercises "60s" / "20×1:30" (load × time). */
+function perfLabel(p: Pick<Prev, "weight_kg" | "reps" | "duration_s">, unit: Unit, timed: boolean) {
+  const load = p.weight_kg != null ? String(fromKg(p.weight_kg, unit)) : null;
+  if (timed) return `${load ? `${load}×` : ""}${fmtDuration(p.duration_s ?? null)}`;
+  return `${load ?? "BW"}×${p.reps ?? "-"}`;
+}
 
 /**
  * Lines this session's sets up with last time's: the nth warm-up with the nth warm-up and the
@@ -52,6 +61,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
   const [finishing, setFinishing] = useState(false);
   const [confirmFinish, setConfirmFinish] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [picker, setPicker] = useState<{ add: true } | { swap: SessionExercise } | null>(null);
   // Records to beat for live PR toasts. Empty (so no toasts) when the history couldn't load.
   const records = useRef<Map<string, LiveRecord>>(new Map());
 
@@ -79,7 +89,8 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
     return { session, prevBy };
   }, [id]);
 
-  function onSetCompleted(ex: SessionExercise, set: Pick<SessionSet, "weight_kg" | "reps" | "set_type">) {
+  /** restAfter is false for exercises inside a superset except the last one: you go straight to the next. */
+  function onSetCompleted(ex: SessionExercise, set: Pick<SessionSet, "weight_kg" | "reps" | "set_type">, restAfter: boolean) {
     if (data?.session.status === "completed") return;
     if (isWorkingSet(set)) {
       const kinds = checkLivePr(records.current, { exercise_id: ex.exercise_id, exercise_name: ex.exercise_name, weight_kg: set.weight_kg, reps: set.reps });
@@ -90,7 +101,25 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
       }
     }
     // rest 0 means the coach turned the timer off for this exercise
-    if (ex.rest_seconds > 0) setRest(restFor(ex.rest_seconds));
+    if (restAfter && ex.rest_seconds > 0) setRest(restFor(ex.rest_seconds));
+    // Mid-superset: a running rest from the previous round no longer applies.
+    if (!restAfter) setRest(null);
+  }
+
+  async function addExercise(exercise: Exercise) {
+    setPicker(null);
+    const { error } = await supabase.rpc("add_session_exercise", { p_session: id, p_exercise: exercise.id });
+    if (error) return notify.error(setRowError(error));
+    notify.success(`${exercise.name} added`);
+    await reload({ silent: true });
+  }
+
+  async function swapExercise(target: SessionExercise, exercise: Exercise) {
+    setPicker(null);
+    const { error } = await supabase.rpc("swap_session_exercise", { p_session_exercise: target.id, p_exercise: exercise.id });
+    if (error) return notify.error(setRowError(error));
+    notify.success(`Swapped ${target.exercise_name} for ${exercise.name}`);
+    await reload({ silent: true });
   }
 
   function patchSession(fn: (s: Session) => void) {
@@ -164,11 +193,15 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
 
       {exercises.length === 0 && <p className="text-muted">This workout has no exercises.</p>}
 
-      {exercises.map((ex) => (
+      {supersetRuns(exercises).map((run) => {
+        const cards = run.items.map((ex, k) => (
         <ExerciseCard
-          key={ex.id}
+          // Re-mount on a swap so the rows drop the old exercise's typed values.
+          key={`${ex.id}:${ex.exercise_id}`}
           ex={ex}
           unit={unit}
+          canSwap={!completed && !ex.session_sets.some((s) => s.completed)}
+          onSwap={() => setPicker({ swap: ex })}
           prev={ex.exercise_id ? prevBy[ex.exercise_id] : undefined}
           onSetChange={(setId, patch) =>
             patchSession((s) => {
@@ -189,9 +222,33 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
               if (e) e.session_sets = [...e.session_sets.filter((x) => x.id !== set.id), set].sort((a, b) => a.set_number - b.set_number);
             })
           }
-          onCompleted={(set) => onSetCompleted(ex, set)}
+          onCompleted={(set) => onSetCompleted(ex, set, k === run.items.length - 1)}
         />
-      ))}
+        ));
+        if (!run.superset) return cards;
+        return (
+          <section key={`ss-${run.items[0].id}`} aria-label={`Superset: ${run.items.map((e) => e.exercise_name).join(" and ")}`}
+            className="space-y-2 rounded-3xl border-2 border-brand/40 p-1.5">
+            <p className="flex items-center gap-1.5 px-2 pt-1 text-xs font-semibold uppercase tracking-wide text-brand-dark">
+              <Link2 className="size-4" aria-hidden /> Superset · rest after {run.items.at(-1)!.exercise_name}
+            </p>
+            {cards}
+          </section>
+        );
+      })}
+
+      {!completed && (
+        <Button variant="secondary" className="w-full" onClick={() => setPicker({ add: true })}>
+          <Plus className="size-4" aria-hidden /> Add exercise
+        </Button>
+      )}
+
+      <ExercisePickSheet
+        open={picker !== null}
+        onOpenChange={(o) => !o && setPicker(null)}
+        title={picker && "swap" in picker ? `Swap ${picker.swap.exercise_name}` : "Add exercise"}
+        onPick={(e) => (picker && "swap" in picker ? swapExercise(picker.swap, e) : addExercise(e))}
+      />
 
       <SessionNotes session={session} />
 
@@ -230,11 +287,13 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
 }
 
 function ExerciseCard({
-  ex, unit, prev, onSetChange, onSetsReplaced, onSetRestored, onCompleted,
+  ex, unit, prev, canSwap, onSwap, onSetChange, onSetsReplaced, onSetRestored, onCompleted,
 }: {
   ex: SessionExercise;
   unit: Unit;
   prev?: Prev[];
+  canSwap: boolean;
+  onSwap: () => void;
   onSetChange: (setId: string, patch: Partial<SessionSet>) => void;
   onSetsReplaced: (sets: SessionSet[]) => void;
   onSetRestored: (set: SessionSet) => void;
@@ -299,19 +358,31 @@ function ExerciseCard({
   }
 
   const prevWork = (prev ?? []).filter((p) => p.set_type !== "warmup");
-  const lastTime = prevWork.length ? prevWork.map((p) => `${p.weight_kg != null ? fromKg(p.weight_kg, unit) : "BW"}×${p.reps ?? "-"}`).join(", ") : null;
+  const lastTime = prevWork.length ? prevWork.map((p) => perfLabel(p, unit, ex.timed)).join(", ") : null;
   const labels = setLabels(ex.session_sets);
+  const target = ex.rep_min === ex.rep_max ? `${ex.rep_min}` : `${ex.rep_min}-${ex.rep_max}`;
 
   return (
     <section className="rounded-2xl border border-line bg-surface" aria-label={ex.exercise_name}>
       <div className="border-b border-line px-3 py-2.5">
         <div className="flex items-start justify-between gap-2">
-          <h2 className="font-semibold leading-tight">{ex.exercise_name}</h2>
+          <h2 className="min-w-0 font-semibold leading-tight">{ex.exercise_name}</h2>
           <span className="shrink-0 text-xs font-semibold text-muted">
-            {ex.target_sets} × {ex.rep_min === ex.rep_max ? ex.rep_min : `${ex.rep_min}-${ex.rep_max}`}
+            {ex.target_sets} × {target}{ex.timed && "s"}
             {ex.target_rpe != null && ` @ RPE ${Number(ex.target_rpe)}`} · {ex.rest_seconds > 0 ? `rest ${fmtRest(ex.rest_seconds)}` : "no rest timer"}
           </span>
         </div>
+        {(ex.original_exercise_name || ex.added_mid_workout) && (
+          <p className="mt-0.5 text-xs text-warn">
+            {ex.original_exercise_name ? `Swapped from ${ex.original_exercise_name}` : "Added during this workout"}
+          </p>
+        )}
+        {canSwap && (
+          <button type="button" onClick={onSwap} className="-ml-1 mt-0.5 flex items-center gap-1 rounded-md px-1 py-0.5 text-xs font-semibold text-brand hover:bg-brand/10"
+            aria-label={`Swap ${ex.exercise_name} for another exercise`}>
+            <ArrowLeftRight className="size-3.5" aria-hidden /> Swap exercise
+          </button>
+        )}
         {ex.coach_notes && <p className="mt-0.5 text-xs text-brand-dark">Coach: {ex.coach_notes}</p>}
         <p className="mt-0.5 text-xs text-muted">
           Last time: {lastTime ? <span className="font-medium text-ink">{lastTime}</span> : "no previous log"}
@@ -323,7 +394,7 @@ function ExerciseCard({
           <span>Set</span>
           <span>Prev</span>
           <span className="text-center">{ex.is_bodyweight ? `+${unit}` : unit}</span>
-          <span className="text-center">Reps</span>
+          <span className="text-center">{ex.timed ? "Time" : "Reps"}</span>
           <span className="sr-only">Done</span>
         </div>
         {ex.session_sets.map((s, i) => (
@@ -340,6 +411,7 @@ function ExerciseCard({
             // Suggest from the nearest earlier set of the same kind, so a warm-up never seeds a working set.
             above={ex.session_sets.slice(0, i).findLast((x) => isWorkingSet(x) === isWorkingSet(s))}
             repTarget={ex.rep_max}
+            timed={ex.timed}
             onChange={(patch) => onSetChange(s.id, patch)}
             onCompleted={onCompleted}
           />
@@ -371,6 +443,22 @@ function ExerciseCard({
       </div>
     </section>
   );
+}
+
+/** Library picker for adding or swapping an exercise mid-workout. The library loads only while it's open. */
+function ExercisePickSheet({ open, onOpenChange, title, onPick }: { open: boolean; onOpenChange: (o: boolean) => void; title: string; onPick: (e: Exercise) => void }) {
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange} title={title}>
+      {open && <PickBody onPick={onPick} />}
+    </Sheet>
+  );
+}
+
+function PickBody({ onPick }: { onPick: (e: Exercise) => void }) {
+  const { data, loading, error, reload } = useLibrary();
+  if (loading) return <Spinner />;
+  if (error || !data) return <ErrorBox message={error ?? "Couldn't load the library"} onRetry={reload} />;
+  return <ExerciseBrowser lib={data} onPick={onPick} compact nested />;
 }
 
 function WarmupSheet({ open, onOpenChange, exerciseName, unit, workingKg, busy, onAdd }: {
@@ -493,27 +581,31 @@ function parseNum(s: string): number | null {
   return Number.isFinite(v) ? v : null;
 }
 
-type SetPatch = Partial<Pick<SessionSet, "weight_kg" | "reps" | "completed" | "set_type" | "rpe">>;
+type SetPatch = Partial<Pick<SessionSet, "weight_kg" | "reps" | "completed" | "set_type" | "rpe" | "duration_s">>;
+
+/** Duration as typed into the time field: plain seconds under a minute, else m:ss. */
+const durationText = (sec: number | null) => (sec == null ? "" : sec < 60 ? String(sec) : fmtDuration(sec));
 
 function SetRow({
-  sessionId, set, label, exerciseName, unit, bodyweight, prev, targetRpe, above, repTarget, onChange, onCompleted,
+  sessionId, set, label, exerciseName, unit, bodyweight, prev, targetRpe, above, repTarget, timed, onChange, onCompleted,
 }: {
   sessionId: string; set: SessionSet; label: string; exerciseName: string; unit: Unit; bodyweight: boolean; prev?: Prev; targetRpe: number | null;
-  above?: SessionSet; repTarget: number;
+  above?: SessionSet; repTarget: number; timed: boolean;
   onChange: (p: Partial<SessionSet>) => void; onCompleted: (set: Pick<SessionSet, "weight_kg" | "reps" | "set_type">) => void;
 }) {
   const supabase = createClient();
   const [weight, setWeight] = useState(set.weight_kg != null ? String(fromKg(set.weight_kg, unit)) : "");
-  const [reps, setReps] = useState(set.reps != null ? String(set.reps) : "");
+  // For timed exercises this field holds the duration ("45" or "1:30") instead of reps.
+  const [reps, setReps] = useState(timed ? durationText(set.duration_s) : set.reps != null ? String(set.reps) : "");
   const [state, setState] = useState<"idle" | "saving" | "error">("idle");
   const [err, setErr] = useState<string | null>(null);
   const [typeOpen, setTypeOpen] = useState(false);
   const [rpeOpen, setRpeOpen] = useState(false);
-  const lastSaved = useRef<Required<SetPatch>>({ weight_kg: set.weight_kg, reps: set.reps, completed: set.completed, set_type: set.set_type, rpe: set.rpe });
+  const lastSaved = useRef<Required<SetPatch>>({ weight_kg: set.weight_kg, reps: set.reps, completed: set.completed, set_type: set.set_type, rpe: set.rpe, duration_s: set.duration_s });
 
   // Suggested values: the set above in this session, else the same set last time.
   const suggestW = above?.weight_kg ?? prev?.weight_kg ?? null;
-  const suggestR = above?.reps ?? prev?.reps ?? null;
+  const suggestR = timed ? (above?.duration_s ?? prev?.duration_s ?? null) : (above?.reps ?? prev?.reps ?? null);
 
   async function save(patch: SetPatch) {
     const next = { ...lastSaved.current, ...patch };
@@ -536,20 +628,25 @@ function SetRow({
     return true;
   }
 
-  function valueFromInputs() {
+  function valueFromInputs(): { weight_kg: number | null; reps?: number | null; duration_s?: number | null } {
     const w = parseNum(weight);
+    const weight_kg = w === null ? null : Number(toKg(w, unit)!.toFixed(3));
+    if (timed) return { weight_kg, duration_s: parseDuration(reps) };
     const r = parseNum(reps);
-    return { weight_kg: w === null ? null : Number(toKg(w, unit)!.toFixed(3)), reps: r === null ? null : Math.round(r) };
+    return { weight_kg, reps: r === null ? null : Math.round(r) };
   }
+  /** The second field's value (reps, or seconds when timed). */
+  const secondField = () => { const v = valueFromInputs(); return (timed ? v.duration_s : v.reps) ?? null; };
 
   async function toggle() {
     if (set.completed) return save({ completed: false });
     primeChime(); // unlock audio inside this tap so the rest timer can chime later (iOS)
-    let { weight_kg, reps: r } = valueFromInputs();
+    let { weight_kg } = valueFromInputs();
+    let r = secondField();
     // Tapping ✓ on an empty row accepts the suggested values.
     if (r === null && suggestR !== null) {
       r = suggestR;
-      setReps(String(r));
+      setReps(timed ? durationText(r) : String(r));
     }
     if (weight_kg === null && suggestW !== null && !bodyweight) {
       weight_kg = suggestW;
@@ -557,12 +654,13 @@ function SetRow({
     }
     if (r === null) {
       setState("error");
-      setErr("Enter reps first");
+      setErr(FILL_FIRST);
       return;
     }
-    const ok = await save({ weight_kg, reps: r, completed: true });
+    const ok = await save(timed ? { weight_kg, duration_s: r, completed: true } : { weight_kg, reps: r, completed: true });
     if (ok) {
-      onCompleted({ weight_kg, reps: r, set_type: set.set_type });
+      // Timed sets have no reps, so they never count as a rep or weight-for-reps PR.
+      onCompleted({ weight_kg, reps: timed ? null : r, set_type: set.set_type });
       // The coach asked for an effort rating on this exercise, so offer the choices straight away.
       if (targetRpe != null && isWorkingSet(set) && set.rpe == null) setRpeOpen(true);
     }
@@ -579,7 +677,8 @@ function SetRow({
     void save({ set_type: t });
   }
 
-  const prevLabel = prev ? `${prev.weight_kg != null ? fromKg(prev.weight_kg, unit) : "BW"}×${prev.reps ?? "-"}` : "-";
+  const prevLabel = prev ? perfLabel(prev, unit, timed) : "-";
+  const FILL_FIRST = timed ? "Enter a time first" : "Enter reps first";
   const info = setTypeInfo(set.set_type);
 
   return (
@@ -609,15 +708,15 @@ function SetRow({
           onBlur={() => save({ weight_kg: valueFromInputs().weight_kg })}
         />
         <input
-          aria-label={`Set ${label} reps`}
-          inputMode="numeric"
+          aria-label={timed ? `Set ${label} time (seconds or m:ss)` : `Set ${label} reps`}
+          inputMode={timed ? "decimal" : "numeric"}
           autoComplete="off"
           enterKeyHint="done"
           className="h-12 w-full rounded-xl border border-line bg-surface text-center font-mono text-lg font-semibold tabular-nums transition-[border-color,box-shadow] duration-150 placeholder:font-normal placeholder:text-muted focus:border-brand focus:outline-none focus:ring-4 focus:ring-brand/15"
-          placeholder={suggestR != null ? String(suggestR) : String(repTarget)}
+          placeholder={suggestR != null ? (timed ? durationText(suggestR) : String(suggestR)) : timed ? durationText(repTarget) : String(repTarget)}
           value={reps}
-          onChange={(e) => setReps(e.target.value.replace(/[^0-9]/g, ""))}
-          onBlur={() => save({ reps: valueFromInputs().reps })}
+          onChange={(e) => setReps(e.target.value.replace(timed ? /[^0-9:.]/g : /[^0-9]/g, ""))}
+          onBlur={() => save(timed ? { duration_s: secondField() } : { reps: secondField() })}
         />
         <button
           onClick={toggle}
@@ -667,7 +766,7 @@ function SetRow({
       {state === "error" && (
         <p className="flex items-center gap-2 px-2 pb-1 text-xs font-medium text-danger" role="alert">
           {err ?? "Couldn't save"}
-          {err !== "Enter reps first" && (
+          {err !== FILL_FIRST && (
             <button className="underline" onClick={() => save({ ...valueFromInputs(), set_type: set.set_type, rpe: set.rpe })}>Retry</button>
           )}
         </p>

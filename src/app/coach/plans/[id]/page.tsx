@@ -1,7 +1,8 @@
 "use client";
 import Link from "next/link";
 import { use, useRef, useState } from "react";
-import { ArrowDown, ArrowUp, ChevronLeft, Info, Plus, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronLeft, Info, Link2, Plus, Trash2, X } from "lucide-react";
+import { isLinkedToNext, supersetRuns, toggleSupersetLink } from "@/lib/workout";
 import { createClient } from "@/lib/supabase/client";
 import { useAsync, must } from "@/lib/useAsync";
 import { PLAN_SELECT, sortPlan, type Exercise, type Plan, type PlanDay, type PlanExercise } from "@/lib/data";
@@ -159,8 +160,9 @@ export default function PlanBuilderPage({ params }: { params: Promise<{ id: stri
               exercise_id: ex.id,
               position,
               target_sets: 3,
-              rep_min: ex.is_bodyweight ? 8 : 8,
-              rep_max: ex.is_bodyweight ? 15 : 12,
+              // timed exercises: targets are seconds
+              rep_min: ex.timed ? 30 : 8,
+              rep_max: ex.timed ? 60 : ex.is_bodyweight ? 15 : 12,
               rest_seconds: 90,
             }),
           );
@@ -197,6 +199,14 @@ function DayCard({ day, first, last, write, onMove, onMoveExercise, onAddExercis
         // Once the last write is in, show the reloaded server copy (it equals `next` unless a write failed).
         if (--pending.current === 0) setOptimistic(null);
       });
+  }
+  const groups = day.plan_exercises.map((pe) => pe.superset_group);
+  const inSuperset = groups.map(() => false);
+  supersetRuns(day.plan_exercises).forEach((r) => r.superset && r.items.forEach((_, k) => (inSuperset[r.start + k] = true)));
+  function toggleLink(i: number) {
+    const next = toggleSupersetLink(groups, i);
+    const changed = day.plan_exercises.filter((pe, k) => pe.superset_group !== next[k]);
+    write(() => changed.map((pe) => supabase.from("plan_exercises").update({ superset_group: next[day.plan_exercises.indexOf(pe)] }).eq("id", pe.id)));
   }
   return (
     <section className="rounded-2xl border border-line bg-surface" aria-label={day.name}>
@@ -235,7 +245,8 @@ function DayCard({ day, first, last, write, onMove, onMoveExercise, onAddExercis
       </div>
       <ul className="divide-y divide-line">
         {day.plan_exercises.map((pe, i) => (
-          <ExerciseRow key={pe.id} pe={pe} first={i === 0} last={i === day.plan_exercises.length - 1} write={write} onMove={(dir) => onMoveExercise(i, dir)} />
+          <ExerciseRow key={pe.id} pe={pe} first={i === 0} last={i === day.plan_exercises.length - 1} write={write} onMove={(dir) => onMoveExercise(i, dir)}
+            superset={inSuperset[i]} linkedToNext={isLinkedToNext(groups, i)} onToggleLink={() => toggleLink(i)} />
         ))}
         {day.plan_exercises.length === 0 && <li className="p-3 text-sm text-muted">No exercises yet.</li>}
       </ul>
@@ -246,15 +257,21 @@ function DayCard({ day, first, last, write, onMove, onMoveExercise, onAddExercis
   );
 }
 
-function ExerciseRow({ pe, first, last, write, onMove }: { pe: PlanExercise; first: boolean; last: boolean; write: WriteFn; onMove: (dir: -1 | 1) => void }) {
+function ExerciseRow({ pe, first, last, write, onMove, superset, linkedToNext, onToggleLink }: {
+  pe: PlanExercise; first: boolean; last: boolean; write: WriteFn; onMove: (dir: -1 | 1) => void;
+  superset: boolean; linkedToNext: boolean; onToggleLink: () => void;
+}) {
   const supabase = createClient();
   const [err, setErr] = useState<string | null>(null);
+  // Timed exercises (plank, carries) use the rep targets as seconds.
+  const timed = pe.exercises.timed;
+  const repMax = timed ? 3600 : 100;
 
   function saveNum(field: "target_sets" | "rep_min" | "rep_max" | "rest_seconds", raw: string, min: number, max: number) {
     const v = Number(raw);
     if (raw.trim() === "" || !Number.isInteger(v) || v < min || v > max) return setErr(`Enter a whole number from ${min} to ${max}.`);
     const next = { rep_min: pe.rep_min, rep_max: pe.rep_max, [field]: v };
-    if (next.rep_max < next.rep_min) return setErr("Max reps must be at least min reps.");
+    if (next.rep_max < next.rep_min) return setErr(timed ? "Max time must be at least min time." : "Max reps must be at least min reps.");
     setErr(null);
     if (v !== pe[field]) write(() => supabase.from("plan_exercises").update({ [field]: v }).eq("id", pe.id));
   }
@@ -282,12 +299,14 @@ function ExerciseRow({ pe, first, last, write, onMove }: { pe: PlanExercise; fir
 
   const k = `${pe.id}-${pe.target_sets}-${pe.rep_min}-${pe.rep_max}-${pe.rest_seconds}-${pe.target_rpe}`;
   return (
-    <li className="p-3">
+    <li className={cn("p-3", superset && "border-l-4 border-l-brand pl-2")}>
+      {superset && <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-brand-dark">Superset</p>}
       <div className="flex items-center gap-1">
         <ExerciseThumb ex={pe.exercises} className="mr-2 size-10" />
         <p className="flex-1 font-semibold">
           {pe.exercises.name}
           {pe.exercises.is_bodyweight && <span className="ml-1 text-xs font-normal text-muted">bodyweight</span>}
+          {timed && <span className="ml-1 text-xs font-normal text-muted">timed</span>}
         </p>
         <IconBtn label="Move exercise up" disabled={first} onClick={() => onMove(-1)}><ArrowUp className="size-4" /></IconBtn>
         <IconBtn label="Move exercise down" disabled={last} onClick={() => onMove(1)}><ArrowDown className="size-4" /></IconBtn>
@@ -295,14 +314,22 @@ function ExerciseRow({ pe, first, last, write, onMove }: { pe: PlanExercise; fir
       </div>
       <div className="mt-2 grid grid-cols-5 gap-2" key={k}>
         <Field label="Sets"><NumInput defaultValue={pe.target_sets} onBlur={(e) => saveNum("target_sets", e.target.value, 1, 20)} /></Field>
-        <Field label="Min reps"><NumInput defaultValue={pe.rep_min} onBlur={(e) => saveNum("rep_min", e.target.value, 1, 100)} /></Field>
-        <Field label="Max reps"><NumInput defaultValue={pe.rep_max} onBlur={(e) => saveNum("rep_max", e.target.value, 1, 100)} /></Field>
+        <Field label={timed ? "Min (s)" : "Min reps"}><NumInput defaultValue={pe.rep_min} onBlur={(e) => saveNum("rep_min", e.target.value, 1, repMax)} /></Field>
+        <Field label={timed ? "Max (s)" : "Max reps"}><NumInput defaultValue={pe.rep_max} onBlur={(e) => saveNum("rep_max", e.target.value, 1, repMax)} /></Field>
         <Field label="Rest (s)"><NumInput defaultValue={pe.rest_seconds} onBlur={(e) => saveNum("rest_seconds", e.target.value, 0, 1800)} /></Field>
         <Field label="RPE"><NumInput decimal placeholder="–" defaultValue={pe.target_rpe ?? ""} onBlur={(e) => saveRpe(e.target.value)} /></Field>
       </div>
       <Input className="mt-2 text-sm" placeholder="Notes for the client (optional)" defaultValue={pe.notes ?? ""} aria-label={`${pe.exercises.name} notes`}
         onBlur={(e) => e.target.value !== (pe.notes ?? "") && write(() => supabase.from("plan_exercises").update({ notes: e.target.value || null }).eq("id", pe.id))} />
       {err && <p className="mt-1 text-xs font-medium text-danger" role="alert">{err}</p>}
+      {!last && (
+        <button type="button" onClick={onToggleLink} aria-pressed={linkedToNext}
+          className={cn("mt-2 flex min-h-9 items-center gap-1.5 rounded-lg px-2 text-xs font-semibold",
+            linkedToNext ? "bg-brand/10 text-brand-dark" : "text-muted hover:bg-surface-2")}>
+          <Link2 className="size-4" aria-hidden />
+          {linkedToNext ? "Superset with next: on" : "Superset with next"}
+        </button>
+      )}
     </li>
   );
 }
