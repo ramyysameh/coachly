@@ -120,6 +120,9 @@ test("3. client logs sets, closes the app mid-session, resumes, completes; coach
   // set 2 accepts the suggestion from set 1 with a single tap
   await first.getByRole("button", { name: "Complete set 2" }).click();
   await expect(first.getByRole("button", { name: "Mark set 2 not done" })).toBeVisible();
+  // The label flips as soon as the set is tapped, before its save reaches the server. Wait for the
+  // save to finish, or going offline next can catch set 2 mid-request and fail it as well.
+  await expect(first.getByRole("button", { name: "Mark set 2 not done" })).toHaveAttribute("aria-busy", "false");
 
   // Set 3 is logged with no connection, then the app is closed before it could sync.
   await clientCtx.setOffline(true);
