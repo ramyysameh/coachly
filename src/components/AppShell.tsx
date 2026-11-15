@@ -173,7 +173,7 @@ export default function AppShell({ profile, children }: { profile: Profile; chil
         <div data-recede className="min-w-0 flex-1">
           {/* Mobile top bar */}
           <header
-            className="chrome sticky top-0 z-20 flex items-center justify-between border-b border-line/70 bg-surface/80 px-4 py-2 backdrop-blur-xl backdrop-saturate-150 md:hidden"
+            className="chrome chrome-top sticky top-0 z-20 flex items-center justify-between border-b border-line/70 bg-surface/80 px-4 py-2 backdrop-blur-xl backdrop-saturate-150 md:hidden"
             style={{ paddingTop: "max(0.5rem, env(safe-area-inset-top))" }}
           >
             <BrandMark compact />
@@ -200,7 +200,7 @@ export default function AppShell({ profile, children }: { profile: Profile; chil
         {/* Mobile bottom navigation */}
         <nav
           data-recede
-          className="chrome fixed inset-x-0 bottom-0 z-30 grid border-t border-line/70 bg-surface/85 backdrop-blur-xl backdrop-saturate-150 md:hidden"
+          className="chrome chrome-bottom fixed inset-x-0 bottom-0 z-30 grid border-t border-line/70 bg-surface/85 backdrop-blur-xl backdrop-saturate-150 md:hidden"
           style={{ gridTemplateColumns: `repeat(${tabs.length}, 1fr)`, paddingBottom: "env(safe-area-inset-bottom)" }}
           aria-label="Main"
         >
@@ -212,11 +212,11 @@ export default function AppShell({ profile, children }: { profile: Profile; chil
                 href={n.href}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "relative flex min-h-16 flex-col items-center justify-center gap-1 text-label font-semibold transition-colors duration-150",
+                  "group relative flex min-h-16 flex-col items-center justify-center gap-1 text-label font-semibold transition-colors duration-150",
                   active ? "text-brand-dark" : "text-muted active:text-ink",
                 )}
               >
-                <span className={cn("flex h-7 w-12 items-center justify-center rounded-full transition-colors duration-200", active && "bg-brand/12")}>
+                <span className={cn("flex h-7 w-12 items-center justify-center rounded-full transition-[background-color,transform] duration-150 ease-out group-active:scale-90", active && "bg-brand/12")}>
                   <n.icon className="size-[22px]" strokeWidth={active ? 2.1 : 1.75} aria-hidden />
                 </span>
                 {n.label}
