@@ -5,6 +5,7 @@ import NumberFlow from "@number-flow/react";
 import { useRouter } from "next/navigation";
 import { Check, ChevronLeft, Minus, Plus, Timer, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { playChime, primeChime } from "@/lib/chime";
 import { useAsync, must } from "@/lib/useAsync";
 import { SESSION_SELECT, sortSession, type Session, type SessionExercise, type SessionSet } from "@/lib/data";
 import { useProfile } from "@/components/AppShell";
@@ -76,7 +77,8 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
       .eq("id", id);
     setFinishing(false);
     if (error) return setError(errMsg(error));
-    router.push(`/today?done=1&session=${id}`);
+    // replace, so Back from Today doesn't reopen the finished workout
+    router.replace(`/today?done=1&session=${id}`);
   }
 
   if (loading) return <Spinner label="Loading workout…" />;
@@ -330,6 +332,7 @@ function SetRow({
 
   async function toggle() {
     if (set.completed) return save({ completed: false });
+    primeChime(); // unlock audio inside this tap so the rest timer can chime later (iOS)
     let { weight_kg, reps: r } = valueFromInputs();
     // Tapping ✓ on an empty row accepts the suggested values.
     if (r === null && suggestR !== null) {
@@ -446,6 +449,7 @@ function RestTimer({ rest, onClose }: { rest: { until: number; total: number }; 
   useEffect(() => {
     if (left === 0) {
       navigator.vibrate?.(200);
+      playChime();
       const t = setTimeout(onClose, 2500);
       return () => clearTimeout(t);
     }

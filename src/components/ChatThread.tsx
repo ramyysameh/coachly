@@ -23,6 +23,15 @@ export default function ChatThread({ conversationId, otherName, canSend }: { con
   // older messages, and offer a pill to jump down instead.
   const atBottom = useRef(true);
   const [unseen, setUnseen] = useState(0);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Grow the box with the message up to its max height (max-h-32), then scroll inside it.
+  useLayoutEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight + el.offsetHeight - el.clientHeight}px`;
+  }, [text]);
 
   function merge(incoming: Msg[]) {
     setMessages((prev) => {
@@ -205,6 +214,7 @@ export default function ChatThread({ conversationId, otherName, canSend }: { con
       {canSend ? (
         <form onSubmit={send} className="flex items-end gap-2 border-t border-line bg-surface p-2">
           <textarea
+            ref={inputRef}
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {

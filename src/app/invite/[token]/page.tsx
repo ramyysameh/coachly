@@ -15,8 +15,9 @@ export default function InvitePage({ params }: { params: Promise<{ token: string
   const supabase = createClient();
   const [accepting, setAccepting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [signingOut, setSigningOut] = useState(false);
 
-  const { data, loading, error: loadError } = useAsync(async () => {
+  const { data, loading, error: loadError, reload } = useAsync(async () => {
     const [{ data: inv, error }, { data: claims }] = await Promise.all([
       supabase.rpc("get_invitation", { p_token: token }),
       supabase.auth.getClaims(),
@@ -40,6 +41,15 @@ export default function InvitePage({ params }: { params: Promise<{ token: string
       return setError(errMsg(error));
     }
     router.replace("/");
+    router.refresh();
+  }
+
+  async function signOut() {
+    setSigningOut(true);
+    await supabase.auth.signOut();
+    // Stay on this page; it reloads into the signed-out view with sign-up and log-in options.
+    await reload();
+    setSigningOut(false);
     router.refresh();
   }
 
@@ -77,7 +87,10 @@ export default function InvitePage({ params }: { params: Promise<{ token: string
             <Button onClick={accept} loading={accepting} className="w-full" size="lg">Accept invitation</Button>
           )}
           {data.role === "coach" && (
-            <ErrorBox message="You're signed in as a coach. Log out and use a client account to accept this invitation." />
+            <>
+              <ErrorBox message="You're signed in as a coach. Log out and use a client account to accept this invitation." />
+              <Button onClick={signOut} loading={signingOut} variant="secondary" className="w-full">Log out</Button>
+            </>
           )}
           {!data.role && (
             <div className="space-y-2">

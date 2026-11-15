@@ -726,3 +726,39 @@ test("Create custom exercise in the picker starts from the typed search", async 
   const form = page.getByRole("dialog", { name: "Custom exercise" });
   await expect(form.getByLabel("Name")).toHaveValue("zercher squat");
 });
+
+test("the chat box grows with a long message", async ({ browser }) => {
+  const page = await phone(browser, "alex@demo.test");
+  await page.goto("/chat");
+  const box = page.getByLabel("Message");
+  const oneLine = (await box.boundingBox())!.height;
+  await box.fill(["line one", "line two", "line three"].join("\n"));
+  await expect.poll(async () => (await box.boundingBox())!.height).toBeGreaterThan(oneLine + 20);
+  await box.fill(Array.from({ length: 20 }, (_, i) => `line ${i}`).join("\n"));
+  await expect.poll(async () => (await box.boundingBox())!.height).toBeLessThanOrEqual(128 + 1); // capped at max-h-32
+  await box.fill("");
+  await expect.poll(async () => (await box.boundingBox())!.height).toBe(oneLine);
+});
+
+test("a coach opening an invite can log out right there", async ({ browser }) => {
+  const page = await phone(browser, "coach@demo.test");
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.goto("/coach/invite");
+  let token: string | undefined;
+  try {
+    await page.getByRole("button", { name: /Create & copy link/ }).click();
+    await expect(toast(page, "Invite link copied")).toBeVisible();
+    token = (await page.evaluate(() => navigator.clipboard.readText())).split("/invite/")[1];
+    await page.goto(`/invite/${token}`);
+    await expect(page.getByText("You're signed in as a coach.")).toBeVisible();
+    await page.getByRole("button", { name: "Log out" }).click();
+    await expect(page.getByRole("link", { name: "Create client account" })).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`/invite/${token}$`));
+  } finally {
+    if (token) {
+      const { api } = await signedInApi("coach@demo.test");
+      const { error } = await api.from("invitations").delete().eq("token", token);
+      expect(error).toBeNull();
+    }
+  }
+});
