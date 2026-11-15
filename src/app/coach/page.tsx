@@ -91,7 +91,8 @@ export default function CoachDashboard() {
 
           <FlagList flags={data.flags} names={data.names} />
 
-          <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
+          {/* minmax(0, …) tracks: the client rows use nowrap `truncate` text, which would otherwise widen the column past the viewport. */}
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
             <section>
               <h2 className="mb-3 font-semibold tracking-tight">Active clients</h2>
               {data.clients.length === 0 ? (
