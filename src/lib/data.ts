@@ -7,7 +7,7 @@ export type Movement = { id: string; name: string; pattern: Pattern; created_by:
 export type Exercise = {
   id: string; name: string; muscle_group: string | null; equipment: string | null; is_bodyweight: boolean; created_by: string | null;
   movement_id: string | null; angle: string | null; grip: string | null; unilateral: boolean;
-  primary_muscles: string[]; secondary_muscles: string[]; cues: string[]; mistakes: string[]; image_url: string | null; timed: boolean;
+  primary_muscles: string[]; secondary_muscles: string[]; cues: string[]; mistakes: string[]; image_url: string | null; timed: boolean; video_url: string | null;
   movements?: Movement | null;
 };
 export const EXERCISE_SELECT = "*, movements(*)";

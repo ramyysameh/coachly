@@ -1,6 +1,6 @@
 "use client";
 import { useMemo, useState, type ReactNode } from "react";
-import { ArrowLeftRight, ImagePlus, Plus, Search } from "lucide-react";
+import { ArrowLeftRight, ImagePlus, PlayCircle, Plus, Search } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useAsync, must } from "@/lib/useAsync";
 import { EXERCISE_SELECT, type Exercise, type Movement, type Pattern } from "@/lib/data";
@@ -141,6 +141,13 @@ export function ExerciseDetail({ ex, all, onOpen, onPick }: { ex: Exercise; all:
           </div>
         )}
       </div>
+      {ex.video_url && (
+        <a href={ex.video_url} target="_blank" rel="noopener noreferrer"
+          className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-line text-sm font-semibold text-brand hover:bg-surface-2">
+          <PlayCircle className="size-5" aria-hidden /> Watch demo video
+          <span className="sr-only">(opens in a new tab)</span>
+        </a>
+      )}
       <div className="flex flex-wrap gap-1.5">
         {ex.movements && <Badge tone="brand">{cap(ex.movements.pattern)}</Badge>}
         {ex.equipment && <Badge>{ex.equipment}</Badge>}
@@ -215,7 +222,7 @@ export function CustomExerciseForm({ lib, initialName = "", onCancel, onCreated 
   const { profile } = useProfile();
   const [f, setF] = useState({
     name: initialName, movement_id: "", new_movement: "", pattern: "push" as Pattern, equipment: "", angle: "", grip: "",
-    unilateral: false, is_bodyweight: false, timed: false, cues: "", mistakes: "",
+    unilateral: false, is_bodyweight: false, timed: false, cues: "", mistakes: "", video_url: "",
   });
   const [primary, setPrimary] = useState<string[]>([]);
   const [secondary, setSecondary] = useState<string[]>([]);
@@ -236,6 +243,8 @@ export function CustomExerciseForm({ lib, initialName = "", onCancel, onCreated 
     if (!name) return setErr("Enter an exercise name.");
     if (lib.exercises.some((x) => x.name.toLowerCase() === name.toLowerCase())) return setErr("An exercise with this name already exists. Search for it instead.");
     if (f.movement_id === "new" && !f.new_movement.trim()) return setErr("Name the new base movement.");
+    const video = f.video_url.trim();
+    if (video && !/^https:\/\/\S+$/.test(video)) return setErr("The video link should be a full https:// address, e.g. a YouTube link.");
     if (primary.length === 0) return setErr("Tag at least one primary muscle. These drive weekly volume and the heat map.");
     setSaving(true);
     setErr(null);
@@ -254,7 +263,7 @@ export function CustomExerciseForm({ lib, initialName = "", onCancel, onCreated 
       }
       const ex = must(await supabase.from("exercises").insert({
         name, equipment: f.equipment || null, is_bodyweight: f.is_bodyweight || f.equipment === "Bodyweight",
-        movement_id: movementId, angle: f.angle || null, grip: f.grip || null, unilateral: f.unilateral, timed: f.timed,
+        movement_id: movementId, angle: f.angle || null, grip: f.grip || null, unilateral: f.unilateral, timed: f.timed, video_url: video || null,
         primary_muscles: primary, secondary_muscles: secondary, cues: lines(f.cues), mistakes: lines(f.mistakes),
         image_url, created_by: profile.id,
       }).select(EXERCISE_SELECT).single()) as Exercise;
@@ -268,6 +277,9 @@ export function CustomExerciseForm({ lib, initialName = "", onCancel, onCreated 
   return (
     <form onSubmit={submit} className="space-y-4" noValidate>
       <Field label="Name"><Input autoFocus value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="e.g. Landmine Press" /></Field>
+      <Field label="Demo video link (optional)" hint="A YouTube, Vimeo or other https:// link. Clients open it from the exercise details.">
+        <Input type="url" inputMode="url" value={f.video_url} onChange={(e) => setF({ ...f, video_url: e.target.value })} placeholder="https://" />
+      </Field>
       <Field label="Base movement" hint="Variants of one movement share history and show up as swap options.">
         <Select value={f.movement_id} onChange={(e) => setF({ ...f, movement_id: e.target.value })}>
           <option value="">None</option>

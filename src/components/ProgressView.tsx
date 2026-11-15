@@ -1,13 +1,13 @@
 "use client";
 import { useMemo, useState } from "react";
 import NumberFlow, { type Format } from "@number-flow/react";
-import { ArrowDownRight, ArrowUpRight, CalendarCheck, Dumbbell, Medal, Scale, SlidersHorizontal, Target, Trophy } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, CalendarCheck, Dumbbell, Medal, Ruler, Scale, SlidersHorizontal, Sparkles, Target, Trophy } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useAsync, must } from "@/lib/useAsync";
 import { getActivePlan, type Plan } from "@/lib/data";
 import { buildDays, type CalSession } from "@/lib/calendar";
 import {
-  currentRecords, DEFAULT_TARGET, exerciseOptions, fmtSets, inRange, monthBounds, periodTotals, PR_LABEL, prEvents, setsPerMuscle,
+  currentRecords, DEFAULT_TARGET, exerciseOptions, groupKey, groupLabel, fmtSets, inRange, monthBounds, periodTotals, PR_LABEL, prEvents, setsPerMuscle,
   strengthSeries, volumeStatus, weekStart, weightWithAverage, type GroupBy, type MuscleTargets, type PeriodTotals, type PrEvent, type SessionRow, type SetRow,
 } from "@/lib/analytics";
 import { MUSCLES, muscleLabel, type Muscle } from "@/lib/muscles";
@@ -16,9 +16,11 @@ import { loadTargets, MuscleTargetsEditor } from "@/components/MuscleHeatMap";
 import { useSheet } from "@/components/Sheet";
 import { Badge, Button, Card, Empty, ErrorBox, NumInput, Select, Skeleton } from "@/components/ui";
 import { addDays, cn, errMsg, fmtDate, fromKg, localDate, toKg, type Unit } from "@/lib/utils";
+import { volumeComparison } from "@/lib/summary";
 
 type BW = { id: string; entry_date: string; weight_kg: number };
-type Data = { sets: SetRow[]; sessions: (SessionRow & CalSession)[]; plan: Plan | null; bw: BW[]; prs: PrEvent[]; targets: MuscleTargets };
+type BM = { id: string; entry_date: string } & Record<Site, number | null>;
+type Data = { sets: SetRow[]; sessions: (SessionRow & CalSession)[]; plan: Plan | null; bw: BW[]; bm: BM[]; prs: PrEvent[]; targets: MuscleTargets };
 
 /**
  * Stats for one client, shared by the coach (client profile → Progress) and the client (Progress page).
@@ -35,16 +37,17 @@ export default function ProgressView({ clientId, unit, canLogWeight, canEditTarg
   const { data, loading, error, reload } = useAsync(async (): Promise<Data> => {
     // A year of history so records and "previous best" are right even for a short range.
     const histFrom = addDays(rangeFrom < addDays(today, -365) ? rangeFrom : addDays(today, -365), 0);
-    const [sets, sessions, plan, bw, targets] = await Promise.all([
+    const [sets, sessions, plan, bw, bm, targets] = await Promise.all([
       supabase.rpc("completed_sets", { p_client: clientId, p_from: histFrom, p_to: today }),
       supabase.from("workout_sessions").select("id, scheduled_date, name, status, plan_day_id, started_at, completed_at")
         .eq("client_id", clientId).gte("scheduled_date", histFrom).order("scheduled_date"),
       getActivePlan(supabase, clientId),
       supabase.from("body_weights").select("*").eq("client_id", clientId).order("entry_date"),
+      supabase.from("body_measurements").select("*").eq("client_id", clientId).order("entry_date"),
       loadTargets(supabase, clientId),
     ]);
     const rows = must(sets) as SetRow[];
-    return { sets: rows, sessions: must(sessions) as Data["sessions"], plan, bw: must(bw) as BW[], prs: prEvents(rows), targets };
+    return { sets: rows, sessions: must(sessions) as Data["sessions"], plan, bw: must(bw) as BW[], bm: must(bm) as BM[], prs: prEvents(rows), targets };
   }, [clientId, rangeFrom, today]);
 
   if (loading) return <div className="space-y-4"><Skeleton className="h-36" /><Skeleton className="h-64" /><Skeleton className="h-64" /></div>;
@@ -53,11 +56,13 @@ export default function ProgressView({ clientId, unit, canLogWeight, canEditTarg
   return (
     <div className="space-y-4">
       <MonthCompare data={data} unit={unit} today={today} />
+      <YearInReview data={data} unit={unit} today={today} />
       <Consistency data={data} from={rangeFrom} to={rangeTo} today={today} />
       <StrengthProgress data={data} unit={unit} from={rangeFrom} to={rangeTo} />
       <Records data={data} unit={unit} today={today} />
       <MuscleVolume clientId={clientId} data={data} today={today} canEdit={canEditTargets} onSaved={() => reload({ silent: true })} />
       <BodyWeight clientId={clientId} unit={unit} entries={data.bw} canLog={canLogWeight} onSaved={() => reload({ silent: true })} from={rangeFrom} to={rangeTo} />
+      <BodyMeasurements clientId={clientId} unit={unit} entries={data.bm} canLog={canLogWeight} onSaved={() => reload({ silent: true })} from={rangeFrom} to={rangeTo} />
     </div>
   );
 }
@@ -432,6 +437,143 @@ function BodyWeight({ clientId, unit, entries, canLog, onSaved, from, to }: { cl
         <form onSubmit={save} className="flex gap-2" noValidate>
           <NumInput decimal placeholder={`Today's weight (${unit})`} value={value} onChange={(e) => setValue(e.target.value)} aria-label={`Body weight in ${unit}`} className="flex-1" />
           <Button type="submit" loading={saving}>Log</Button>
+        </form>
+      )}
+      {error && <p className="text-sm text-danger" role="alert">{error}</p>}
+    </Card>
+  );
+}
+
+/** The year so far in one card: sessions, total lifted, PRs and what got trained most. */
+function YearInReview({ data, unit, today }: { data: Data; unit: Unit; today: string }) {
+  const from = `${today.slice(0, 4)}-01-01`;
+  const t = periodTotals(from, today, data.sessions, data.sets, data.prs);
+  const yearSets = data.sets.filter((s) => inRange(s.performed_on, from, today));
+  const top = (() => {
+    const byEx = new Map<string, { label: string; sets: number }>();
+    yearSets.forEach((s) => {
+      const k = groupKey(s, "variant");
+      byEx.set(k, { label: groupLabel(s, "variant"), sets: (byEx.get(k)?.sets ?? 0) + 1 });
+    });
+    const perMuscle = setsPerMuscle(yearSets);
+    const muscle = MUSCLES.reduce<Muscle | null>((best, m) => (perMuscle[m] > 0 && (!best || perMuscle[m] > perMuscle[best]) ? m : best), null);
+    return { exercise: [...byEx.values()].sort((a, b) => b.sets - a.sets)[0] ?? null, muscle };
+  })();
+  const weeks = new Set(data.sessions.filter((s) => s.status === "completed" && inRange(s.scheduled_date, from, today)).map((s) => weekStart(s.scheduled_date))).size;
+  if (t.sessions === 0) return null;
+  const comparison = volumeComparison(t.volumeKg);
+  return (
+    <Card className="space-y-3">
+      <Header icon={<Sparkles />} title={`${today.slice(0, 4)} so far`} sub={comparison ? `${fmtBig(t.volumeKg, unit)} lifted: ${comparison}.` : undefined} />
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <Tile label="Sessions" value={t.sessions} />
+        <Tile label="Weeks trained" value={weeks} />
+        <Tile label="Working sets" value={t.sets} />
+        <Tile label="PRs" value={t.prs} />
+      </div>
+      {(top.exercise || top.muscle) && (
+        <p className="text-sm text-muted">
+          {top.exercise && <>Most trained: <span className="font-medium text-ink">{top.exercise.label}</span> ({top.exercise.sets} sets)</>}
+          {top.exercise && top.muscle && " · "}
+          {top.muscle && <>Top muscle: <span className="font-medium text-ink">{muscleLabel(top.muscle)}</span></>}
+        </p>
+      )}
+    </Card>
+  );
+}
+
+type Site = "waist_cm" | "chest_cm" | "hips_cm" | "arm_cm" | "thigh_cm";
+const SITES: { key: Site; label: string; min: number; max: number }[] = [
+  { key: "waist_cm", label: "Waist", min: 20, max: 300 },
+  { key: "chest_cm", label: "Chest", min: 20, max: 300 },
+  { key: "hips_cm", label: "Hips", min: 20, max: 300 },
+  { key: "arm_cm", label: "Arm", min: 10, max: 150 },
+  { key: "thigh_cm", label: "Thigh", min: 10, max: 200 },
+];
+// Stored in cm; lb users see inches.
+const lenUnit = (unit: Unit) => (unit === "kg" ? "cm" : "in");
+const fromCm = (cm: number, unit: Unit) => Math.round((unit === "kg" ? cm : cm / 2.54) * 10) / 10;
+const toCm = (v: number, unit: Unit) => (unit === "kg" ? v : v * 2.54);
+
+/** Tape measurements per site: the latest value and the change since the first entry in the range. */
+function BodyMeasurements({ clientId, unit, entries, canLog, onSaved, from, to }: {
+  clientId: string; unit: Unit; entries: BM[]; canLog: boolean; onSaved: () => void; from: string; to: string;
+}) {
+  const supabase = createClient();
+  const today = localDate();
+  const lu = lenUnit(unit);
+  const todays = entries.find((e) => e.entry_date === today);
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState<Record<Site, string>>(() =>
+    Object.fromEntries(SITES.map((s) => [s.key, todays?.[s.key] != null ? String(fromCm(Number(todays[s.key]), unit)) : ""])) as Record<Site, string>);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const inR = entries.filter((e) => inRange(e.entry_date, from, to));
+  const sites = SITES.map((s) => {
+    const withVal = inR.filter((e) => e[s.key] != null);
+    const first = withVal[0], last = withVal.at(-1);
+    return {
+      ...s,
+      latest: last ? fromCm(Number(last[s.key]), unit) : null,
+      change: first && last && first !== last ? fromCm(Number(last[s.key]) - Number(first[s.key]), unit) : null,
+      since: first?.entry_date ?? null,
+    };
+  });
+  const any = sites.some((s) => s.latest !== null);
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    const row: Partial<Record<Site, number | null>> = {};
+    for (const s of SITES) {
+      const raw = form[s.key].trim().replace(",", ".");
+      if (!raw) { row[s.key] = null; continue; }
+      const cm = toCm(Number(raw), unit);
+      if (!Number.isFinite(cm) || cm < s.min || cm > s.max) {
+        return setError(`${s.label} should be between ${fromCm(s.min, unit)} and ${fromCm(s.max, unit)} ${lu}.`);
+      }
+      row[s.key] = Math.round(cm * 10) / 10;
+    }
+    if (Object.values(row).every((v) => v == null)) return setError("Enter at least one measurement.");
+    setSaving(true);
+    setError(null);
+    // One row per day: saving again today replaces today's numbers (the form starts from them).
+    const { error } = await supabase.from("body_measurements").upsert({ client_id: clientId, entry_date: today, ...row }, { onConflict: "client_id,entry_date" });
+    setSaving(false);
+    if (error) return setError(errMsg(error));
+    setOpen(false);
+    onSaved();
+  }
+
+  if (!any && !canLog) return null;
+  return (
+    <Card className="space-y-3">
+      <Header icon={<Ruler />} title="Measurements" sub={`Tape measurements in ${lu}. Change is since the first entry in this range.`}
+        action={canLog && !open ? <Button size="sm" variant="secondary" onClick={() => setOpen(true)}>{todays ? "Edit today" : "Log"}</Button> : undefined} />
+      {any ? (
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+          {sites.filter((s) => s.latest !== null).map((s) => (
+            <Tile key={s.key} label={s.label} value={s.latest} format={oneDecimal} suffix={` ${lu}`}
+              sub={s.change !== null && s.since ? `${s.change > 0 ? "+" : s.change < 0 ? "−" : "±"}${Math.abs(s.change)} ${lu} since ${fmtDate(s.since, { month: "short", day: "numeric" })}` : undefined} />
+          ))}
+        </div>
+      ) : (
+        !open && <p className="text-sm text-muted">No measurements yet (optional). Waist is the most useful one to track.</p>
+      )}
+      {canLog && open && (
+        <form onSubmit={save} className="space-y-2" noValidate>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+            {SITES.map((s) => (
+              <label key={s.key} className="block">
+                <span className="mb-1 block text-xs font-medium text-muted">{s.label} ({lu})</span>
+                <NumInput decimal value={form[s.key]} onChange={(e) => setForm({ ...form, [s.key]: e.target.value })} aria-label={`${s.label} in ${lu}`} />
+              </label>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <Button type="submit" loading={saving}>Save</Button>
+            <Button type="button" variant="ghost" onClick={() => { setOpen(false); setError(null); }}>Cancel</Button>
+          </div>
         </form>
       )}
       {error && <p className="text-sm text-danger" role="alert">{error}</p>}
