@@ -5,6 +5,7 @@ import { X } from "lucide-react";
 import { Button } from "@/components/ui";
 import { errMsg } from "@/lib/utils";
 import { notify } from "@/lib/notify";
+import { recede } from "@/lib/recede";
 
 type SheetProps = {
   open: boolean;
@@ -41,6 +42,13 @@ export function Sheet({ open, onOpenChange, title, onBack, footer, nested, onClo
       else setDrawerOpen(false);
     }
   }, [open, drawerOpen]);
+
+  // Push the screen behind back while a top-level sheet is open (nested sheets: vaul scales the parent sheet).
+  useEffect(() => {
+    if (!drawerOpen || nested) return;
+    recede(true);
+    return () => recede(false);
+  }, [drawerOpen, nested]);
 
   return (
     <Root
