@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import NumberFlow from "@number-flow/react";
-import { AlertTriangle, CalendarX, ChevronRight, Dumbbell, Flag as FlagIcon, MessageCircle, Scale, TrendingUp, UserPlus, Users } from "lucide-react";
+import { AlertTriangle, CalendarX, ChevronRight, Dumbbell, Flag as FlagIcon, Medal, MessageCircle, Scale, TrendingUp, UserPlus, Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useAsync, must } from "@/lib/useAsync";
 import { useProfile } from "@/components/AppShell";
@@ -9,8 +9,9 @@ import { Avatar, Badge, Card, Empty, ErrorBox, LinkButton, PageHeader, Skeleton 
 import { addDays, fmtDate, fmtDateTime, localDate, type Unit } from "@/lib/utils";
 import { PLAN_SELECT, type Plan } from "@/lib/data";
 import type { CalSession } from "@/lib/calendar";
-import type { SetRow } from "@/lib/analytics";
+import { prEvents, type SetRow } from "@/lib/analytics";
 import { clientFlags, type Flag, type FlagKind } from "@/lib/flags";
+import PushToggle from "@/components/PushToggle";
 
 type ClientRow = { client_id: string; status: string; profiles: { id: string; full_name: string; goal: string | null; goal_type: string | null; weight_unit: Unit } };
 type Recent = { id: string; name: string; scheduled_date: string; completed_at: string; client_id: string; profiles: { full_name: string } };
@@ -33,8 +34,8 @@ export default function CoachDashboard() {
       supabase.rpc("unread_counts"),
       supabase.from("workout_sessions").select("client_id, completed_at").in("client_id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]).eq("status", "completed").order("completed_at", { ascending: false }).limit(500),
       supabase.rpc("coach_missed_sessions", { p_from: addDays(today, -14), p_to: addDays(today, -1) }),
-      // for the flag list: sets, plans, sessions and weigh-ins of every active client
-      supabase.rpc("coach_completed_sets", { p_from: addDays(today, -120), p_to: today }),
+      // Sets of every active client: a year so PR highlights are real records; the flags get the last 120 days.
+      supabase.rpc("coach_completed_sets", { p_from: addDays(today, -365), p_to: today }),
       supabase.from("plans").select(PLAN_SELECT).in("client_id", idList).eq("is_active", true),
       supabase.from("workout_sessions").select("id, client_id, scheduled_date, name, status, plan_day_id, started_at, completed_at")
         .in("client_id", idList).gte("scheduled_date", addDays(today, -91)).order("scheduled_date"),
@@ -44,13 +45,22 @@ export default function CoachDashboard() {
     const planRows = must(plans) as Plan[];
     const sessionRows = must(sessions) as (CalSession & { client_id: string })[];
     const weightRows = must(weights) as { client_id: string; entry_date: string; weight_kg: number }[];
+    const flagFrom = addDays(today, -120); // the window the flag rules were written for
+    // PRs per session, worked out per client (records are personal) with the same rules as Progress.
+    const prsBySession: Record<string, string[]> = {};
+    for (const id of ids) {
+      for (const e of prEvents(setRows.filter((s) => s.client_id === id))) {
+        const list = (prsBySession[e.session_id] ??= []);
+        if (!list.includes(e.label)) list.push(e.label);
+      }
+    }
     const flags: Flag[] = clients.flatMap((c) => clientFlags({
       clientId: c.client_id,
       goalType: c.profiles.goal_type,
       unit: c.profiles.weight_unit,
       plan: planRows.find((p) => p.client_id === c.client_id) ?? null,
       sessions: sessionRows.filter((s) => s.client_id === c.client_id),
-      sets: setRows.filter((s) => s.client_id === c.client_id),
+      sets: setRows.filter((s) => s.client_id === c.client_id && s.performed_on >= flagFrom),
       weights: weightRows.filter((w) => w.client_id === c.client_id),
     }, today));
     const convByClient = Object.fromEntries((must(convs) as { id: string; client_id: string }[]).map((c) => [c.client_id, c.id]));
@@ -69,12 +79,14 @@ export default function CoachDashboard() {
       missed: missedAll.sort((a, b) => b.scheduled_date.localeCompare(a.scheduled_date)),
       names: Object.fromEntries(clients.map((c) => [c.client_id, c.profiles.full_name])),
       flags,
+      prsBySession,
     };
   }, [profile.id, today]);
 
   return (
     <div className="space-y-6">
       <PageHeader title="Dashboard" subtitle={`Welcome back, ${profile.full_name.split(" ")[0] || "coach"}`} action={<LinkButton href="/coach/invite" className="hidden sm:inline-flex"><UserPlus className="size-4" /> Invite client</LinkButton>} />
+      <PushToggle userId={profile.id} role="coach" />
 
       {loading ? (
         <div className="grid gap-3 sm:grid-cols-4">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-24" />)}</div>
@@ -135,8 +147,16 @@ export default function CoachDashboard() {
                       {data.recent.map((r) => (
                         <li key={r.id}>
                           <Link href={`/coach/clients/${r.client_id}?tab=workouts&session=${r.id}`} className="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-surface-2">
-                            <span className="flex-1">
+                            <span className="min-w-0 flex-1">
                               <span className="font-semibold">{r.profiles.full_name}</span> · {r.name}
+                              {data.prsBySession[r.id]?.length > 0 && (
+                                <span className="mt-0.5 flex items-center gap-1 text-xs font-medium text-brand-dark">
+                                  <Medal className="size-3.5 shrink-0" aria-hidden />
+                                  <span className="truncate">
+                                    PR{data.prsBySession[r.id].length > 1 ? "s" : ""}: {data.prsBySession[r.id].join(", ")}
+                                  </span>
+                                </span>
+                              )}
                             </span>
                             <span className="text-xs text-muted">{fmtDate(r.scheduled_date)}</span>
                           </Link>

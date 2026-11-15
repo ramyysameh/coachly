@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useProfile } from "@/components/AppShell";
 import { ErrorBox, Spinner } from "@/components/ui";
 import { cn, errMsg, fmtDateTime } from "@/lib/utils";
+import { notifyOthers } from "@/lib/push";
 
 type Msg = { id: string; conversation_id: string; sender_id: string; body: string; created_at: string; state?: "sending" | "failed" };
 
@@ -133,6 +134,8 @@ export default function ChatThread({ conversationId, otherName, canSend }: { con
       setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, state: "failed" } : m)));
       return;
     }
+    // The server sends at most one notification per message, so a retried send can't double up.
+    notifyOthers("message", msg.id);
     // Fetch the stored row for its server timestamp.
     const { data } = await supabase.from("messages").select("*").eq("id", msg.id).maybeSingle();
     if (data) merge([data as Msg]);

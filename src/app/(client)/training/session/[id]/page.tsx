@@ -20,6 +20,7 @@ import { checkLivePr, liveRecords, PR_LABEL, type LiveRecord, type SetRow as His
 import { isWorkingSet, SET_TYPE_TONE, SET_TYPES, setLabels, setTypeInfo } from "@/lib/setTypes";
 import { addDays, cn, errMsg, fmtDate, fmtRest, fromKg, localDate, toKg, type Unit } from "@/lib/utils";
 import { clearSetPatch, flushPendingSets, pendingPatchesFor, queueSetPatch } from "@/lib/pendingSets";
+import { notifyOthers } from "@/lib/push";
 
 type Prev = { exercise_id: string; performed_on: string; set_number: number; reps: number | null; weight_kg: number | null; set_type?: SetType; duration_s?: number | null };
 
@@ -146,6 +147,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
     setFinishing(false);
     if (error) return setError(errMsg(error));
     // replace, so Back from Today doesn't reopen the finished workout
+    notifyOthers("workout", id); // tells the coach; keepalive lets it outlive the navigation
     router.replace(`/today?done=1&session=${id}`);
   }
 

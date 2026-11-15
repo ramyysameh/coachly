@@ -13,6 +13,7 @@ import { BrandMark } from "@/components/ui";
 import { ConfirmSheet, useSheet } from "@/components/Sheet";
 import CoachSearch from "@/components/CoachSearch";
 import { clearOfflineData } from "@/lib/offline";
+import { disablePush } from "@/lib/push";
 import { flushPendingSets, pendingSetCount } from "@/lib/pendingSets";
 import { flushPendingMeals, pendingMealCount } from "@/lib/pendingMeals";
 
@@ -107,6 +108,8 @@ export default function AppShell({ profile, children }: { profile: Profile; chil
   }
 
   async function finishSignOut() {
+    // Stop this device's notifications first, while still signed in (a shared phone shouldn't keep them).
+    await disablePush(supabase).catch(() => {});
     await clearOfflineData();
     await supabase.auth.signOut();
     router.replace("/login");

@@ -9,6 +9,7 @@ import { Avatar, Button, Card, ErrorBox, Field, Input, NumInput, PageHeader, Sel
 import { cmToFtIn, ftInToCm, GOALS, LEVELS } from "@/lib/profile";
 import { cn, errMsg, localDate } from "@/lib/utils";
 import { notify } from "@/lib/notify";
+import PushToggle from "@/components/PushToggle";
 
 export default function EditProfilePage() {
   const { profile } = useProfile();
@@ -134,6 +135,8 @@ export default function EditProfilePage() {
         {err && <ErrorBox message={err} />}
         <Button type="submit" size="lg" loading={saving} disabled={saved} className="w-full">Save profile</Button>
       </form>
+      {/* Per device, saved straight away: kept out of the profile form and its Save button. */}
+      <div className="mt-4"><PushToggle userId={profile.id} role="client" /></div>
     </div>
   );
 }
