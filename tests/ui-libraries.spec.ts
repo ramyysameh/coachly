@@ -609,9 +609,28 @@ test("deleting a plan day asks in a bottom sheet", async ({ browser }) => {
 test("logging out with nothing pending shows no sheet", async ({ browser }) => {
   const page = await phone(browser, "alex@demo.test");
   const dialogs = trackDialogs(page);
-  await page.getByRole("button", { name: "Log out" }).click();
+  await page.getByRole("button", { name: "Account" }).click();
+  await page.getByRole("dialog", { name: "Account" }).getByRole("button", { name: "Log out" }).click();
   await page.waitForURL("**/login");
   expect(dialogs).toEqual([]);
+});
+
+test("the coach's phone tab bar holds five items and Invite lights Clients", async ({ browser }) => {
+  const page = await phone(browser, "coach@demo.test");
+  await page.goto("/coach/invite");
+  const tabBar = page.locator("nav[aria-label='Main']:visible");
+  await expect(tabBar.getByRole("link")).toHaveCount(5);
+  await expect(tabBar.getByRole("link", { name: "Invite" })).toHaveCount(0);
+  await expect(tabBar.getByRole("link", { name: "Clients" })).toHaveAttribute("aria-current", "page");
+});
+
+test("the account sheet links a client to their profile", async ({ browser }) => {
+  const page = await phone(browser, "alex@demo.test");
+  await expect(page.getByRole("banner").getByRole("button", { name: "Log out" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Account" }).click();
+  await page.getByRole("dialog", { name: "Account" }).getByRole("link", { name: "Your profile" }).click();
+  await page.waitForURL("**/profile");
+  await expect(page.getByRole("dialog", { name: "Account" })).toHaveCount(0);
 });
 
 test("a failed day delete shows one toast and keeps the sheet open", async ({ browser }) => {
