@@ -15,7 +15,7 @@ export const MUSCLE_LABEL: Record<Muscle, string> = {
 export const muscleLabel = (m: string) => MUSCLE_LABEL[m as Muscle] ?? m;
 
 export const PATTERNS = ["push", "pull", "squat", "hinge", "lunge", "carry", "core", "isolation"] as const;
-export const EQUIPMENT = ["Barbell", "Dumbbell", "Machine", "Cable", "Smith", "Kettlebell", "Bodyweight", "Band"] as const;
+export const EQUIPMENT = ["Barbell", "Dumbbell", "Machine", "Cable", "Smith", "EZ Bar", "Trap Bar", "Kettlebell", "Bodyweight", "Band"] as const;
 export const ANGLES = ["flat", "incline", "decline"] as const;
 export const GRIPS = ["overhand", "underhand", "neutral", "wide", "close"] as const;
 

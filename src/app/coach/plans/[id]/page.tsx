@@ -1,24 +1,56 @@
 "use client";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { use, useRef, useState } from "react";
-import { ArrowDown, ArrowUp, ChevronLeft, Info, Link2, Plus, Trash2, X } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowLeftRight, ArrowUp, ChevronLeft, Copy, Info, Link2, Plus, Trash2, UserPlus, X } from "lucide-react";
 import { isLinkedToNext, supersetRuns, toggleSupersetLink } from "@/lib/workout";
 import { createClient } from "@/lib/supabase/client";
 import { useAsync, must } from "@/lib/useAsync";
 import { PLAN_SELECT, sortPlan, type Exercise, type Plan, type PlanDay, type PlanExercise } from "@/lib/data";
-import { ExerciseBrowser, ExerciseThumb, useLibrary } from "@/components/ExerciseLibrary";
+import { ExerciseBrowser, ExerciseThumb, useLibrary, variantLabel } from "@/components/ExerciseLibrary";
+import { useProfile } from "@/components/AppShell";
 import { ConfirmSheet, Sheet, useSheet } from "@/components/Sheet";
-import { Badge, Button, Card, Empty, ErrorBox, Field, Input, NumInput, Spinner, Textarea } from "@/components/ui";
-import { cn, errMsg, fmtDate, WEEKDAYS } from "@/lib/utils";
+import { Badge, Button, Empty, ErrorBox, Field, Input, NumInput, Select, Spinner, Textarea } from "@/components/ui";
+import { cn, errMsg, fmtDate, localDate, WEEKDAYS } from "@/lib/utils";
 import { notify } from "@/lib/notify";
+
+type Result = { error: { message: string } | null };
+type WriteFn = (fn: () => PromiseLike<Result>[] | PromiseLike<Result>) => Promise<boolean>;
+type Targets = Pick<PlanExercise, "target_sets" | "rep_min" | "rep_max" | "rest_seconds">;
+
+/**
+ * Starting targets for a newly added exercise, so the coach only tweaks instead of retyping every row.
+ * Timed holds use seconds; isolation/core work goes higher-rep with short rest; heavy barbell
+ * squats and hinges get low reps and long rest; everything else lands in the usual hypertrophy range.
+ */
+function defaultTargets(ex: Exercise): Targets {
+  const pattern = ex.movements?.pattern;
+  if (ex.timed) return { target_sets: 3, rep_min: 30, rep_max: 60, rest_seconds: 60 };
+  if (pattern === "isolation" || pattern === "core") return { target_sets: 3, rep_min: 10, rep_max: 15, rest_seconds: 60 };
+  if (ex.is_bodyweight) return { target_sets: 3, rep_min: 8, rep_max: 15, rest_seconds: 90 };
+  if ((pattern === "squat" || pattern === "hinge") && (ex.equipment === "Barbell" || ex.equipment === "Trap Bar")) {
+    return { target_sets: 3, rep_min: 5, rep_max: 8, rest_seconds: 180 };
+  }
+  return { target_sets: 3, rep_min: 8, rep_max: 12, rest_seconds: 120 };
+}
+
+/** Rough session length: ~40 s of work per set plus the prescribed rest. */
+function estimateMinutes(day: PlanDay) {
+  const sec = day.plan_exercises.reduce((n, pe) => n + pe.target_sets * (40 + pe.rest_seconds), 0);
+  return Math.round(sec / 60 / 5) * 5;
+}
 
 export default function PlanBuilderPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const supabase = createClient();
   const picker = useSheet<PlanDay>();
+  const swapping = useSheet<PlanExercise>();
   const deleting = useSheet<PlanDay>();
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [savedAt, setSavedAt] = useState(false);
+  const assigning = useSheet<Plan>();
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const inFlight = useRef(0);
+  const failedSinceIdle = useRef(false);
   // The picker stays open so a coach can add a whole day in one go. Positions count up from where the
   // day ended when the picker opened, since `picker.item` is a snapshot that doesn't see the new rows.
   const [added, setAdded] = useState<ReadonlyMap<string, number>>(new Map());
@@ -34,18 +66,23 @@ export default function PlanBuilderPage({ params }: { params: Promise<{ id: stri
     return plan ? { plan, clientName } : null;
   }, [id]);
 
-  /** Runs a write, reports errors, then refreshes the plan quietly. */
-  async function write(fn: () => PromiseLike<{ error: { message: string } | null }>[] | PromiseLike<{ error: { message: string } | null }>) {
-    setSaveError(null);
+  /** Runs a write, reports errors, then refreshes the plan quietly. Tracks "Saving…" across overlapping writes. */
+  const write: WriteFn = async (fn) => {
+    inFlight.current++;
+    setStatus("saving");
     const results = await Promise.all([fn()].flat());
     const failed = results.find((r) => r.error);
     if (failed?.error) {
+      failedSinceIdle.current = true;
       notify.error(errMsg(failed.error));
-      setSavedAt(false);
-    } else setSavedAt(true);
+    }
     await reload({ silent: true });
+    if (--inFlight.current === 0) {
+      setStatus(failedSinceIdle.current ? "error" : "saved");
+      failedSinceIdle.current = false;
+    }
     return !failed;
-  }
+  };
 
   if (loading) return <Spinner label="Loading plan…" />;
   if (error) return <ErrorBox message={error} onRetry={reload} />;
@@ -55,13 +92,41 @@ export default function PlanBuilderPage({ params }: { params: Promise<{ id: stri
   const dayCount: Record<number, number> = {};
   plan.plan_days.forEach((d) => d.weekdays.forEach((w) => (dayCount[w] = (dayCount[w] ?? 0) + 1)));
   const clashes = Object.entries(dayCount).filter(([, n]) => n > 1).map(([w]) => WEEKDAYS[Number(w) - 1]);
+  const totalExercises = plan.plan_days.reduce((n, d) => n + d.plan_exercises.length, 0);
+  const statusText = { idle: "Changes save automatically", saving: "Saving…", saved: "All changes saved", error: "Some changes didn't save" }[status];
 
-  function move<T extends { id: string }>(table: "plan_days" | "plan_exercises", list: T[], index: number, dir: -1 | 1) {
+  /** Swaps two neighbours and writes only the rows whose position actually changed. */
+  function move<T extends { id: string; position: number }>(table: "plan_days" | "plan_exercises", list: T[], index: number, dir: -1 | 1) {
     const j = index + dir;
     if (j < 0 || j >= list.length) return;
     const order = [...list];
     [order[index], order[j]] = [order[j], order[index]];
-    return write(() => order.map((item, pos) => supabase.from(table).update({ position: pos }).eq("id", item.id)));
+    return write(() => order.flatMap((item, pos) => (item.position === pos ? [] : [supabase.from(table).update({ position: pos }).eq("id", item.id)])));
+  }
+
+  /** Copies a day (with its exercises) to the end of the plan. The copy is unscheduled so it never clashes. */
+  function duplicateDay(day: PlanDay) {
+    return write(async () => {
+      const { data: nd, error } = await supabase.from("plan_days")
+        .insert({ plan_id: plan.id, name: `${day.name} (copy)`, position: plan.plan_days.length, weekdays: [] })
+        .select("id").single();
+      if (error) return { error };
+      if (!day.plan_exercises.length) return { error: null };
+      return await supabase.from("plan_exercises").insert(day.plan_exercises.map((pe) => ({
+        plan_day_id: nd.id, exercise_id: pe.exercise_id, position: pe.position, target_sets: pe.target_sets, rep_min: pe.rep_min,
+        rep_max: pe.rep_max, rest_seconds: pe.rest_seconds, notes: pe.notes, target_rpe: pe.target_rpe, superset_group: pe.superset_group,
+      })));
+    });
+  }
+
+  async function swapExercise(pe: PlanExercise, ex: Exercise) {
+    swapping.close();
+    if (ex.id === pe.exercise_id) return;
+    // Switching between a timed hold and a rep exercise changes what the targets mean, so reset them.
+    const reset = ex.timed !== pe.exercises.timed ? { rep_min: defaultTargets(ex).rep_min, rep_max: defaultTargets(ex).rep_max } : {};
+    const before = { exercise_id: pe.exercise_id, rep_min: pe.rep_min, rep_max: pe.rep_max };
+    if (!(await write(() => supabase.from("plan_exercises").update({ exercise_id: ex.id, ...reset }).eq("id", pe.id)))) return;
+    notify.undo(`Swapped to ${ex.name}`, async () => { await write(() => supabase.from("plan_exercises").update(before).eq("id", pe.id)); });
   }
 
   return (
@@ -70,25 +135,27 @@ export default function PlanBuilderPage({ params }: { params: Promise<{ id: stri
         <ChevronLeft className="size-4" /> {plan.client_id ? `Back to ${clientName ?? "client"}` : "All templates"}
       </Link>
 
-      <Card className="space-y-3">
-        <div className="flex items-center gap-2">
+      <section className="space-y-3 rounded-2xl border border-line bg-surface p-4" aria-label="Plan details">
+        <div className="flex flex-wrap items-center gap-2">
           {plan.client_id ? <Badge tone="brand">Assigned to {clientName}</Badge> : <Badge>Template</Badge>}
-          <span className="ml-auto text-xs text-muted" role="status">{saveError ? "" : savedAt ? "All changes saved" : "Changes save automatically"}</span>
+          <span className="text-xs text-muted">{plan.plan_days.length} days · {totalExercises} exercises</span>
+          <span className={cn("ml-auto text-xs", status === "error" ? "font-semibold text-danger" : "text-muted")} role="status">{statusText}</span>
         </div>
-        <Field label="Plan name">
-          <Input defaultValue={plan.name} key={`n-${plan.name}`} onBlur={(e) => {
+        <Field label="Plan name" error={nameError}>
+          <Input defaultValue={plan.name} onBlur={(e) => {
             const v = e.target.value.trim();
-            if (!v) { e.target.value = plan.name; return setSaveError("Plan name can't be empty."); }
+            if (!v) { e.target.value = plan.name; return setNameError("Plan name can't be empty."); }
+            setNameError(null);
             if (v !== plan.name) write(() => supabase.from("plans").update({ name: v }).eq("id", plan.id));
           }} />
         </Field>
         <Field label="Description (optional)">
           <Textarea rows={2} defaultValue={plan.description ?? ""} onBlur={(e) => e.target.value !== (plan.description ?? "") && write(() => supabase.from("plans").update({ description: e.target.value || null }).eq("id", plan.id))} />
         </Field>
-        {plan.client_id && (
+        {plan.client_id ? (
           <>
             <Field label="Start date">
-              <Input type="date" defaultValue={plan.start_date ?? ""} key={`s-${plan.start_date}`} onBlur={(e) => e.target.value && e.target.value !== plan.start_date && write(() => supabase.from("plans").update({ start_date: e.target.value }).eq("id", plan.id))} />
+              <Input type="date" defaultValue={plan.start_date ?? ""} onBlur={(e) => e.target.value && e.target.value !== plan.start_date && write(() => supabase.from("plans").update({ start_date: e.target.value }).eq("id", plan.id))} />
             </Field>
             <p className="flex gap-2 rounded-xl bg-brand/5 p-3 text-sm text-brand-dark">
               <Info className="mt-0.5 size-4 shrink-0" />
@@ -96,11 +163,14 @@ export default function PlanBuilderPage({ params }: { params: Promise<{ id: stri
               {plan.start_date && ` Plan runs from ${fmtDate(plan.start_date)}.`}
             </p>
           </>
+        ) : (
+          <Button variant="secondary" className="w-full sm:w-auto" disabled={totalExercises === 0} onClick={() => assigning.show(plan)}>
+            <UserPlus className="size-4" /> Assign to a client
+          </Button>
         )}
-      </Card>
+      </section>
 
-      {saveError && <ErrorBox message={saveError} />}
-      {clashes.length > 0 && <p className="rounded-xl border border-warn-line bg-warn-bg p-3 text-sm text-warn">More than one workout is scheduled on {clashes.join(", ")}. Clients will see the first one listed.</p>}
+      {clashes.length > 0 && <p className="flex gap-2 rounded-xl border border-warn-line bg-warn-bg p-3 text-sm text-warn"><AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />More than one workout is scheduled on {clashes.join(", ")}. Clients will see the first one listed.</p>}
 
       {plan.plan_days.length === 0 && <Empty title="No workout days yet">Add a day such as &quot;Push&quot; or &quot;Upper&quot;, pick the weekdays it runs, then add exercises.</Empty>}
 
@@ -113,11 +183,13 @@ export default function PlanBuilderPage({ params }: { params: Promise<{ id: stri
           write={write}
           onMove={(dir) => move("plan_days", plan.plan_days, di, dir)}
           onMoveExercise={(i, dir) => move("plan_exercises", day.plan_exercises, i, dir)}
+          onSwapExercise={(pe) => swapping.show(pe)}
           onAddExercise={() => {
             nextPosition.current = day.plan_exercises.length;
             setAdded(new Map());
             picker.show(day);
           }}
+          onDuplicate={() => duplicateDay(day)}
           onDelete={() => deleting.show(day)}
         />
       ))}
@@ -140,7 +212,7 @@ export default function PlanBuilderPage({ params }: { params: Promise<{ id: stri
           // ConfirmSheet toasts a thrown error, so don't go through write() (it toasts too).
           const { error } = await supabase.from("plan_days").delete().eq("id", day.id);
           if (error) throw error;
-          setSavedAt(true);
+          setStatus("saved");
           await reload({ silent: true });
         }}
       />
@@ -154,30 +226,26 @@ export default function PlanBuilderPage({ params }: { params: Promise<{ id: stri
           const day = picker.item;
           if (!day) return;
           const position = nextPosition.current++;
-          const ok = await write(() =>
-            supabase.from("plan_exercises").insert({
-              plan_day_id: day.id,
-              exercise_id: ex.id,
-              position,
-              target_sets: 3,
-              // timed exercises: targets are seconds
-              rep_min: ex.timed ? 30 : 8,
-              rep_max: ex.timed ? 60 : ex.is_bodyweight ? 15 : 12,
-              rest_seconds: 90,
-            }),
-          );
+          const ok = await write(() => supabase.from("plan_exercises").insert({ plan_day_id: day.id, exercise_id: ex.id, position, ...defaultTargets(ex) }));
           if (ok) setAdded((m) => new Map(m).set(ex.id, (m.get(ex.id) ?? 0) + 1));
         }}
       />
+
+      <Sheet {...swapping.bind} title={swapping.item ? `Swap ${swapping.item.exercises.name}` : "Swap exercise"}>
+        {swapping.item && <SwapBody current={swapping.item} onSwap={(ex) => swapExercise(swapping.item!, ex)} />}
+      </Sheet>
+
+      <Sheet {...assigning.bind} title="Assign to a client">
+        {assigning.item && <AssignBody key={assigning.key} template={assigning.item} />}
+      </Sheet>
     </div>
   );
 }
 
-type WriteFn = (fn: () => PromiseLike<{ error: { message: string } | null }>[] | PromiseLike<{ error: { message: string } | null }>) => Promise<boolean>;
-
-function DayCard({ day, first, last, write, onMove, onMoveExercise, onAddExercise, onDelete }: {
+function DayCard({ day, first, last, write, onMove, onMoveExercise, onSwapExercise, onAddExercise, onDuplicate, onDelete }: {
   day: PlanDay; first: boolean; last: boolean; write: WriteFn;
-  onMove: (dir: -1 | 1) => void; onMoveExercise: (i: number, dir: -1 | 1) => void; onAddExercise: () => void; onDelete: () => void;
+  onMove: (dir: -1 | 1) => void; onMoveExercise: (i: number, dir: -1 | 1) => void; onSwapExercise: (pe: PlanExercise) => void;
+  onAddExercise: () => void; onDuplicate: () => void; onDelete: () => void;
 }) {
   const supabase = createClient();
   // Weekday taps show at once and their writes run one after another. Each tap builds on the previous
@@ -208,14 +276,15 @@ function DayCard({ day, first, last, write, onMove, onMoveExercise, onAddExercis
     const changed = day.plan_exercises.filter((pe, k) => pe.superset_group !== next[k]);
     write(() => changed.map((pe) => supabase.from("plan_exercises").update({ superset_group: next[day.plan_exercises.indexOf(pe)] }).eq("id", pe.id)));
   }
+  const sets = day.plan_exercises.reduce((n, pe) => n + pe.target_sets, 0);
+  const minutes = estimateMinutes(day);
   return (
     <section className="rounded-2xl border border-line bg-surface" aria-label={day.name}>
-      <div className="flex items-center gap-2 border-b border-line p-3">
+      <div className="flex items-center gap-1 border-b border-line p-3">
         <Input
           aria-label="Day name"
-          className="flex-1 font-semibold"
+          className="mr-1 flex-1 font-semibold"
           defaultValue={day.name}
-          key={`d-${day.name}`}
           onBlur={(e) => {
             const v = e.target.value.trim();
             if (!v) { e.target.value = day.name; return; }
@@ -224,12 +293,16 @@ function DayCard({ day, first, last, write, onMove, onMoveExercise, onAddExercis
         />
         <IconBtn label="Move day up" disabled={first} onClick={() => onMove(-1)}><ArrowUp className="size-4" /></IconBtn>
         <IconBtn label="Move day down" disabled={last} onClick={() => onMove(1)}><ArrowDown className="size-4" /></IconBtn>
-        <IconBtn label="Delete day" danger onClick={onDelete}>
-          <Trash2 className="size-4" />
-        </IconBtn>
+        <IconBtn label="Duplicate day" onClick={onDuplicate}><Copy className="size-4" /></IconBtn>
+        <IconBtn label="Delete day" danger onClick={onDelete}><Trash2 className="size-4" /></IconBtn>
       </div>
       <div className="border-b border-line px-3 py-2">
-        <p className="mb-1 text-xs font-semibold text-muted">Scheduled on</p>
+        <div className="mb-1 flex items-baseline gap-2">
+          <p className="text-xs font-semibold text-muted">Scheduled on</p>
+          {day.plan_exercises.length > 0 && (
+            <p className="ml-auto text-xs text-muted">{day.plan_exercises.length} exercises · {sets} sets{minutes > 0 && ` · ~${minutes} min`}</p>
+          )}
+        </div>
         <div className="flex flex-wrap gap-1.5" role="group" aria-label={`${day.name} weekdays`}>
           {WEEKDAYS.map((label, i) => {
             const w = i + 1;
@@ -242,11 +315,14 @@ function DayCard({ day, first, last, write, onMove, onMoveExercise, onAddExercis
             );
           })}
         </div>
+        {weekdays.length === 0 && (
+          <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-warn"><AlertTriangle className="size-3.5 shrink-0" aria-hidden />Not scheduled yet. Pick the days this workout runs.</p>
+        )}
       </div>
       <ul className="divide-y divide-line">
         {day.plan_exercises.map((pe, i) => (
           <ExerciseRow key={pe.id} pe={pe} first={i === 0} last={i === day.plan_exercises.length - 1} write={write} onMove={(dir) => onMoveExercise(i, dir)}
-            superset={inSuperset[i]} linkedToNext={isLinkedToNext(groups, i)} onToggleLink={() => toggleLink(i)} />
+            onSwap={() => onSwapExercise(pe)} superset={inSuperset[i]} linkedToNext={isLinkedToNext(groups, i)} onToggleLink={() => toggleLink(i)} />
         ))}
         {day.plan_exercises.length === 0 && <li className="p-3 text-sm text-muted">No exercises yet.</li>}
       </ul>
@@ -257,8 +333,8 @@ function DayCard({ day, first, last, write, onMove, onMoveExercise, onAddExercis
   );
 }
 
-function ExerciseRow({ pe, first, last, write, onMove, superset, linkedToNext, onToggleLink }: {
-  pe: PlanExercise; first: boolean; last: boolean; write: WriteFn; onMove: (dir: -1 | 1) => void;
+function ExerciseRow({ pe, first, last, write, onMove, onSwap, superset, linkedToNext, onToggleLink }: {
+  pe: PlanExercise; first: boolean; last: boolean; write: WriteFn; onMove: (dir: -1 | 1) => void; onSwap: () => void;
   superset: boolean; linkedToNext: boolean; onToggleLink: () => void;
 }) {
   const supabase = createClient();
@@ -267,7 +343,7 @@ function ExerciseRow({ pe, first, last, write, onMove, superset, linkedToNext, o
   const timed = pe.exercises.timed;
   const repMax = timed ? 3600 : 100;
 
-  function saveNum(field: "target_sets" | "rep_min" | "rep_max" | "rest_seconds", raw: string, min: number, max: number) {
+  function saveNum(field: keyof Targets, raw: string, min: number, max: number) {
     const v = Number(raw);
     if (raw.trim() === "" || !Number.isInteger(v) || v < min || v > max) return setErr(`Enter a whole number from ${min} to ${max}.`);
     const next = { rep_min: pe.rep_min, rep_max: pe.rep_max, [field]: v };
@@ -297,25 +373,32 @@ function ExerciseRow({ pe, first, last, write, onMove, superset, linkedToNext, o
     notify.undo("Exercise removed", async () => { await write(() => supabase.from("plan_exercises").insert(row)); });
   }
 
-  const k = `${pe.id}-${pe.target_sets}-${pe.rep_min}-${pe.rep_max}-${pe.rest_seconds}-${pe.target_rpe}`;
+  const variant = variantLabel(pe.exercises);
   return (
     <li className={cn("p-3", superset && "border-l-4 border-l-brand pl-2")}>
       {superset && <p className="mb-1 text-label font-semibold uppercase tracking-wide text-brand-dark">Superset</p>}
       <div className="flex items-center gap-1">
         <ExerciseThumb ex={pe.exercises} className="mr-2 size-10" />
-        <p className="flex-1 font-semibold">
-          {pe.exercises.name}
-          {pe.exercises.is_bodyweight && <span className="ml-1 text-xs font-normal text-muted">bodyweight</span>}
-          {timed && <span className="ml-1 text-xs font-normal text-muted">timed</span>}
-        </p>
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-semibold">{pe.exercises.name}</p>
+          <p className="truncate text-xs text-muted">{[variant, pe.exercises.is_bodyweight && "bodyweight", timed && "timed"].filter(Boolean).join(" · ")}</p>
+        </div>
+        <IconBtn label={`Swap ${pe.exercises.name}`} onClick={onSwap}><ArrowLeftRight className="size-4" /></IconBtn>
         <IconBtn label="Move exercise up" disabled={first} onClick={() => onMove(-1)}><ArrowUp className="size-4" /></IconBtn>
         <IconBtn label="Move exercise down" disabled={last} onClick={() => onMove(1)}><ArrowDown className="size-4" /></IconBtn>
         <IconBtn label="Remove exercise" danger onClick={removeExercise}><X className="size-4" /></IconBtn>
       </div>
-      <div className="mt-2 grid grid-cols-5 gap-2" key={k}>
+      {/* Keyed on the exercise, not the values: a save reloads the plan, and remounting here would drop focus mid-Tab. */}
+      <div className="mt-2 grid grid-cols-[1fr_2fr_1fr_1fr] gap-2" key={`${pe.id}-${pe.exercise_id}`}>
         <Field label="Sets"><NumInput defaultValue={pe.target_sets} onBlur={(e) => saveNum("target_sets", e.target.value, 1, 20)} /></Field>
-        <Field label={timed ? "Min (s)" : "Min reps"}><NumInput defaultValue={pe.rep_min} onBlur={(e) => saveNum("rep_min", e.target.value, 1, repMax)} /></Field>
-        <Field label={timed ? "Max (s)" : "Max reps"}><NumInput defaultValue={pe.rep_max} onBlur={(e) => saveNum("rep_max", e.target.value, 1, repMax)} /></Field>
+        <div>
+          <span className="mb-1.5 block text-sm font-medium text-ink">{timed ? "Time (s)" : "Reps"}</span>
+          <div className="flex items-center gap-1">
+            <NumInput aria-label={timed ? "Min seconds" : "Min reps"} defaultValue={pe.rep_min} onBlur={(e) => saveNum("rep_min", e.target.value, 1, repMax)} />
+            <span className="text-muted" aria-hidden>–</span>
+            <NumInput aria-label={timed ? "Max seconds" : "Max reps"} defaultValue={pe.rep_max} onBlur={(e) => saveNum("rep_max", e.target.value, 1, repMax)} />
+          </div>
+        </div>
         <Field label="Rest (s)"><NumInput defaultValue={pe.rest_seconds} onBlur={(e) => saveNum("rest_seconds", e.target.value, 0, 1800)} /></Field>
         <Field label="RPE"><NumInput decimal placeholder="–" defaultValue={pe.target_rpe ?? ""} onBlur={(e) => saveRpe(e.target.value)} /></Field>
       </div>
@@ -327,7 +410,7 @@ function ExerciseRow({ pe, first, last, write, onMove, superset, linkedToNext, o
           className={cn("mt-2 flex min-h-9 items-center gap-1.5 rounded-lg px-2 text-xs font-semibold",
             linkedToNext ? "bg-brand/10 text-brand-dark" : "text-muted hover:bg-surface-2")}>
           <Link2 className="size-4" aria-hidden />
-          {linkedToNext ? "Superset with next: on" : "Superset with next"}
+          {linkedToNext ? "Superset with the next exercise" : "Superset with next"}
         </button>
       )}
     </li>
@@ -372,4 +455,104 @@ function PickerBody({ onPick, added }: { onPick: (ex: Exercise) => void; added: 
   if (loading) return <Spinner />;
   if (error || !data) return <ErrorBox message={error ?? "Couldn't load the library"} onRetry={reload} />;
   return <ExerciseBrowser lib={data} onPick={onPick} canCreate compact nested added={added} onCreated={() => reload({ silent: true })} />;
+}
+
+/**
+ * Swap one plan exercise for another while keeping its sets, reps, rest, notes and place in the day.
+ * Variants of the same movement come first (the usual reason: that machine is taken), then the full library.
+ */
+function SwapBody({ current, onSwap }: { current: PlanExercise; onSwap: (ex: Exercise) => void }) {
+  const { data, loading, error, reload } = useLibrary();
+  if (loading) return <Spinner />;
+  if (error || !data) return <ErrorBox message={error ?? "Couldn't load the library"} onRetry={reload} />;
+  const self = data.exercises.find((e) => e.id === current.exercise_id);
+  const variants = current.exercises.movement_id
+    ? data.exercises.filter((e) => e.movement_id === current.exercises.movement_id && e.id !== current.exercise_id)
+    : [];
+  return (
+    <div className="space-y-5">
+      <p className="text-sm text-muted">Sets, reps, rest and notes stay the same.</p>
+      {variants.length > 0 && (
+        <section aria-label="Variants">
+          <h3 className="mb-1 px-1 text-xs font-semibold tracking-wide text-muted uppercase">Other {self?.movements?.name.toLowerCase() ?? "movement"} variants</h3>
+          <ul>
+            {variants.map((v) => (
+              <li key={v.id}>
+                <button onClick={() => onSwap(v)} className="flex min-h-14 w-full items-center gap-3 rounded-xl px-2 py-2 text-left hover:bg-surface-2">
+                  <ExerciseThumb ex={v} className="size-10" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium">{v.name}</span>
+                    <span className="block truncate text-xs text-muted">{variantLabel(v) || "—"}</span>
+                  </span>
+                  <ArrowLeftRight className="size-4 shrink-0 text-muted" aria-hidden />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      <section aria-label="Any exercise">
+        <h3 className="mb-2 px-1 text-xs font-semibold tracking-wide text-muted uppercase">{variants.length ? "Or any exercise" : "Pick a replacement"}</h3>
+        <ExerciseBrowser lib={data} onPick={onSwap} compact nested />
+      </section>
+    </div>
+  );
+}
+
+/** Copies this template to one of the coach's clients, the same as assigning it from the client's profile. */
+function AssignBody({ template }: { template: Plan }) {
+  const supabase = createClient();
+  const router = useRouter();
+  const { profile } = useProfile();
+  const [clientId, setClientId] = useState("");
+  const [start, setStart] = useState(localDate());
+  const [err, setErr] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const { data, loading, error, reload } = useAsync(async () => {
+    const [clients, active] = await Promise.all([
+      supabase.from("coach_clients").select("client_id, profiles!coach_clients_client_id_fkey(full_name)").eq("coach_id", profile.id).eq("status", "active"),
+      supabase.from("plans").select("client_id, name").eq("coach_id", profile.id).eq("is_active", true).not("client_id", "is", null),
+    ]);
+    const rows = must(clients) as unknown as { client_id: string; profiles: { full_name: string } }[];
+    const current = new Map((must(active) as { client_id: string; name: string }[]).map((p) => [p.client_id, p.name]));
+    return rows.map((r) => ({ id: r.client_id, name: r.profiles.full_name, current: current.get(r.client_id) ?? null }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [profile.id]);
+
+  if (loading) return <Spinner />;
+  if (error || !data) return <ErrorBox message={error ?? "Couldn't load clients"} onRetry={reload} />;
+  if (data.length === 0) return <Empty title="No active clients">Invite a client first, then assign this template. <Link className="font-semibold text-brand" href="/coach/invite">Invite a client</Link></Empty>;
+  const chosen = data.find((c) => c.id === clientId);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!clientId) return setErr("Choose a client.");
+    if (!start) return setErr("Choose a start date.");
+    setSaving(true);
+    setErr(null);
+    const { data: newId, error } = await supabase.rpc("copy_plan", { p_source: template.id, p_name: template.name, p_client: clientId, p_start_date: start });
+    if (error) { setSaving(false); return setErr(errMsg(error)); }
+    notify.success(`Assigned to ${chosen?.name ?? "client"}`);
+    router.push(`/coach/plans/${newId}`);
+  }
+
+  return (
+    <form onSubmit={submit} className="space-y-4" noValidate>
+      <p className="text-sm text-muted">The client gets their own copy, so you can tailor it without changing this template.</p>
+      <Field label="Client">
+        <Select value={clientId} onChange={(e) => setClientId(e.target.value)}>
+          <option value="">Choose a client</option>
+          {data.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </Select>
+      </Field>
+      <Field label="Start date"><Input type="date" value={start} onChange={(e) => setStart(e.target.value)} /></Field>
+      {chosen?.current && (
+        <p className="rounded-xl border border-warn-line bg-warn-bg p-3 text-sm text-warn">
+          This replaces {chosen.name}&apos;s current plan, &quot;{chosen.current}&quot;. Their logged workouts are kept.
+        </p>
+      )}
+      {err && <ErrorBox message={err} />}
+      <Button type="submit" className="w-full" loading={saving}>Copy &amp; assign</Button>
+    </form>
+  );
 }
