@@ -215,7 +215,7 @@ export function CustomExerciseForm({ lib, initialName = "", onCancel, onCreated 
   const { profile } = useProfile();
   const [f, setF] = useState({
     name: initialName, movement_id: "", new_movement: "", pattern: "push" as Pattern, equipment: "", angle: "", grip: "",
-    unilateral: false, is_bodyweight: false, cues: "", mistakes: "",
+    unilateral: false, is_bodyweight: false, timed: false, cues: "", mistakes: "",
   });
   const [primary, setPrimary] = useState<string[]>([]);
   const [secondary, setSecondary] = useState<string[]>([]);
@@ -254,7 +254,7 @@ export function CustomExerciseForm({ lib, initialName = "", onCancel, onCreated 
       }
       const ex = must(await supabase.from("exercises").insert({
         name, equipment: f.equipment || null, is_bodyweight: f.is_bodyweight || f.equipment === "Bodyweight",
-        movement_id: movementId, angle: f.angle || null, grip: f.grip || null, unilateral: f.unilateral,
+        movement_id: movementId, angle: f.angle || null, grip: f.grip || null, unilateral: f.unilateral, timed: f.timed,
         primary_muscles: primary, secondary_muscles: secondary, cues: lines(f.cues), mistakes: lines(f.mistakes),
         image_url, created_by: profile.id,
       }).select(EXERCISE_SELECT).single()) as Exercise;
@@ -308,6 +308,7 @@ export function CustomExerciseForm({ lib, initialName = "", onCancel, onCreated 
       <div className="grid grid-cols-2 gap-2">
         <Check checked={f.unilateral} onChange={(v) => setF({ ...f, unilateral: v })}>Unilateral</Check>
         <Check checked={f.is_bodyweight} onChange={(v) => setF({ ...f, is_bodyweight: v })}>Bodyweight</Check>
+        <Check checked={f.timed} onChange={(v) => setF({ ...f, timed: v })}>Timed (holds, carries)</Check>
       </div>
       <fieldset>
         <legend className="mb-1 text-sm font-medium">Muscles</legend>

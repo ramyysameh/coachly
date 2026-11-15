@@ -5,7 +5,7 @@ import type { SessionSet } from "./data";
 // Set edits are written here before the network request, so a set logged just before
 // the app is closed (or while offline) is sent the next time the workout opens.
 
-type Patch = Partial<Pick<SessionSet, "weight_kg" | "reps" | "completed" | "set_type" | "rpe">>;
+type Patch = Partial<Pick<SessionSet, "weight_kg" | "reps" | "completed" | "set_type" | "rpe" | "duration_s">>;
 type Entry = { sessionId: string; patch: Patch };
 const KEY = "coachly:pending-sets";
 
