@@ -3,14 +3,14 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import NumberFlow from "@number-flow/react";
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
-import { LogOut } from "lucide-react";
-import { clientNav, coachNav } from "@/components/nav";
+import { ChevronRight, LogOut, UserRound } from "lucide-react";
+import { clientNav, coachNav, type NavItem } from "@/components/nav";
 import { createClient } from "@/lib/supabase/client";
 import type { Profile } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
 import { notify } from "@/lib/notify";
-import { BrandMark } from "@/components/ui";
-import { ConfirmSheet, useSheet } from "@/components/Sheet";
+import { Avatar, BrandMark, Button } from "@/components/ui";
+import { ConfirmSheet, Sheet, useSheet } from "@/components/Sheet";
 import CoachSearch from "@/components/CoachSearch";
 import { clearOfflineData } from "@/lib/offline";
 import { disablePush } from "@/lib/push";
@@ -31,13 +31,23 @@ function isActive(path: string, href: string) {
   return path === href || path.startsWith(href + "/");
 }
 
+/** Tab bar highlight: also lights an item for the sidebar-only pages it stands in for. */
+function isTabActive(path: string, n: NavItem) {
+  return isActive(path, n.href) || !!n.alsoActive?.some((h) => isActive(path, h));
+}
+
 export default function AppShell({ profile, children }: { profile: Profile; children: ReactNode }) {
   const path = usePathname();
   const router = useRouter();
   const supabase = createClient();
   const [unread, setUnread] = useState(0);
   const discard = useSheet<number>();
+  // Phone account sheet. Logging out from it waits for the sheet to finish closing, so a
+  // "discard offline changes?" sheet never opens on top of one that is still animating away.
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [logOutAfterClose, setLogOutAfterClose] = useState(false);
   const nav = profile.role === "coach" ? coachNav : clientNav;
+  const tabs = nav.filter((n) => !n.sidebarOnly);
 
   const refreshUnread = useCallback(async () => {
     const { data } = await supabase.rpc("unread_counts");
@@ -167,10 +177,17 @@ export default function AppShell({ profile, children }: { profile: Profile; chil
             style={{ paddingTop: "max(0.5rem, env(safe-area-inset-top))" }}
           >
             <BrandMark compact />
-            {profile.role === "coach" && <CoachSearch coachId={profile.id} className="ml-auto justify-center" />}
-            <button onClick={signOut} className="flex min-h-10 items-center gap-1.5 rounded-lg px-2 text-sm text-muted active:bg-surface-2" aria-label="Log out">
-              <LogOut className="size-4" strokeWidth={1.75} aria-hidden /> Log out
-            </button>
+            <div className="ml-auto flex items-center gap-1">
+              {profile.role === "coach" && <CoachSearch coachId={profile.id} className="justify-center" />}
+              <button
+                onClick={() => setAccountOpen(true)}
+                className="flex size-11 items-center justify-center rounded-full transition-transform duration-150 ease-out active:scale-[0.94]"
+                aria-label="Account"
+                aria-haspopup="dialog"
+              >
+                <Avatar name={profile.full_name} src={profile.avatar_url} />
+              </button>
+            </div>
           </header>
           {(!online || pending > 0) && (
             <p className="flex animate-enter items-center justify-center gap-2 border-b border-warn-line bg-warn-bg px-4 py-2 text-center text-xs font-medium text-warn" role="status">
@@ -183,11 +200,11 @@ export default function AppShell({ profile, children }: { profile: Profile; chil
         {/* Mobile bottom navigation */}
         <nav
           className="fixed inset-x-0 bottom-0 z-30 grid border-t border-line/70 bg-surface/85 backdrop-blur-xl backdrop-saturate-150 md:hidden"
-          style={{ gridTemplateColumns: `repeat(${nav.length}, 1fr)`, paddingBottom: "env(safe-area-inset-bottom)" }}
+          style={{ gridTemplateColumns: `repeat(${tabs.length}, 1fr)`, paddingBottom: "env(safe-area-inset-bottom)" }}
           aria-label="Main"
         >
-          {nav.map((n) => {
-            const active = isActive(path, n.href);
+          {tabs.map((n) => {
+            const active = isTabActive(path, n);
             return (
               <Link
                 key={n.href}
@@ -212,6 +229,48 @@ export default function AppShell({ profile, children }: { profile: Profile; chil
           })}
         </nav>
       </div>
+      <Sheet
+        open={accountOpen}
+        onOpenChange={setAccountOpen}
+        title="Account"
+        onClosed={() => {
+          if (!logOutAfterClose) return;
+          setLogOutAfterClose(false);
+          void signOut();
+        }}
+      >
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <Avatar name={profile.full_name} src={profile.avatar_url} />
+            <div className="min-w-0">
+              <p className="truncate font-semibold">{profile.full_name || "Account"}</p>
+              <p className="text-sm capitalize text-muted">{profile.role}</p>
+            </div>
+          </div>
+          {profile.role === "client" && (
+            <Link
+              href="/profile"
+              onClick={() => setAccountOpen(false)}
+              className="flex min-h-12 items-center gap-3 rounded-xl border border-line px-3.5 text-[15px] font-medium transition-[background-color,transform] duration-150 ease-out hover:bg-surface-2 active:scale-[0.98]"
+            >
+              <UserRound className="size-5 text-muted" strokeWidth={1.75} aria-hidden />
+              <span className="flex-1">Your profile</span>
+              <ChevronRight className="size-5 text-muted" aria-hidden />
+            </Link>
+          )}
+          <Button
+            variant="danger"
+            size="lg"
+            className="w-full"
+            onClick={() => {
+              setLogOutAfterClose(true);
+              setAccountOpen(false);
+            }}
+          >
+            <LogOut className="size-4.5" strokeWidth={1.75} aria-hidden /> Log out
+          </Button>
+        </div>
+      </Sheet>
       <ConfirmSheet
         {...discard.bind}
         title="Log out and discard changes?"
