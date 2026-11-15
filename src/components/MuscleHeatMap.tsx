@@ -70,7 +70,7 @@ export function HeatLegend({ targets }: { targets?: MuscleTargets }) {
         );
       })}
     </ul>
-    {custom && <p className="text-[11px] text-muted">Targets are set per muscle by the coach (default {min}–{max} sets per week).</p>}
+    {custom && <p className="text-label text-muted">Targets are set per muscle by the coach (default {min}–{max} sets per week).</p>}
     </div>
   );
 }
@@ -167,7 +167,7 @@ export default function MuscleHeatMap({ clientId, canEditTargets = false, onTarg
               </li>
             ))}
           </ul>
-          <p className="text-[11px] text-muted">{days > 7 ? "Numbers are sets per week (average over the range)." : "Numbers are sets in the last 7 days."} Showing {view} muscles; switch sides for the rest.</p>
+          <p className="text-label text-muted">{days > 7 ? "Numbers are sets per week (average over the range)." : "Numbers are sets in the last 7 days."} Showing {view} muscles; switch sides for the rest.</p>
           <MuscleTargetsEditor
             key={targetsSheet.key}
             {...targetsSheet.bind}

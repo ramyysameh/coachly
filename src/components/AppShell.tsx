@@ -142,7 +142,7 @@ export default function AppShell({ profile, children }: { profile: Profile; chil
                 href={n.href}
                 aria-current={isActive(path, n.href) ? "page" : undefined}
                 className={cn(
-                  "relative flex min-h-11 items-center gap-3 rounded-xl px-3 text-[15px] font-medium transition-colors duration-150",
+                  "relative flex min-h-11 items-center gap-3 rounded-xl px-3 text-body font-medium transition-colors duration-150",
                   isActive(path, n.href)
                     ? "bg-brand/10 text-brand-dark before:absolute before:inset-y-2.5 before:-left-4 before:w-1 before:rounded-r-full before:bg-brand"
                     : "text-muted hover:bg-surface-2 hover:text-ink",
@@ -173,7 +173,7 @@ export default function AppShell({ profile, children }: { profile: Profile; chil
         <div className="min-w-0 flex-1">
           {/* Mobile top bar */}
           <header
-            className="sticky top-0 z-20 flex items-center justify-between border-b border-line/70 bg-surface/80 px-4 py-2 backdrop-blur-xl backdrop-saturate-150 md:hidden"
+            className="chrome sticky top-0 z-20 flex items-center justify-between border-b border-line/70 bg-surface/80 px-4 py-2 backdrop-blur-xl backdrop-saturate-150 md:hidden"
             style={{ paddingTop: "max(0.5rem, env(safe-area-inset-top))" }}
           >
             <BrandMark compact />
@@ -199,7 +199,7 @@ export default function AppShell({ profile, children }: { profile: Profile; chil
 
         {/* Mobile bottom navigation */}
         <nav
-          className="fixed inset-x-0 bottom-0 z-30 grid border-t border-line/70 bg-surface/85 backdrop-blur-xl backdrop-saturate-150 md:hidden"
+          className="chrome fixed inset-x-0 bottom-0 z-30 grid border-t border-line/70 bg-surface/85 backdrop-blur-xl backdrop-saturate-150 md:hidden"
           style={{ gridTemplateColumns: `repeat(${tabs.length}, 1fr)`, paddingBottom: "env(safe-area-inset-bottom)" }}
           aria-label="Main"
         >
@@ -211,7 +211,7 @@ export default function AppShell({ profile, children }: { profile: Profile; chil
                 href={n.href}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "relative flex min-h-16 flex-col items-center justify-center gap-1 text-[11px] font-semibold transition-colors duration-150",
+                  "relative flex min-h-16 flex-col items-center justify-center gap-1 text-label font-semibold transition-colors duration-150",
                   active ? "text-brand-dark" : "text-muted active:text-ink",
                 )}
               >
@@ -251,7 +251,7 @@ export default function AppShell({ profile, children }: { profile: Profile; chil
             <Link
               href="/profile"
               onClick={() => setAccountOpen(false)}
-              className="flex min-h-12 items-center gap-3 rounded-xl border border-line px-3.5 text-[15px] font-medium transition-[background-color,transform] duration-150 ease-out hover:bg-surface-2 active:scale-[0.98]"
+              className="flex min-h-12 items-center gap-3 rounded-xl border border-line px-3.5 text-body font-medium transition-[background-color,transform] duration-150 ease-out hover:bg-surface-2 active:scale-[0.98]"
             >
               <UserRound className="size-5 text-muted" strokeWidth={1.75} aria-hidden />
               <span className="flex-1">Your profile</span>
@@ -284,7 +284,7 @@ export default function AppShell({ profile, children }: { profile: Profile; chil
 
 function UnreadDot({ count }: { count: number }) {
   return (
-    <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1.5 font-mono text-[10px] font-semibold text-white tabular-nums ring-2 ring-surface" aria-label={`${count} unread`}>
+    <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1.5 font-mono text-2xs font-semibold text-white tabular-nums ring-2 ring-surface" aria-label={`${count} unread`}>
       {count > 99 ? "99+" : <NumberFlow value={count} />}
     </span>
   );

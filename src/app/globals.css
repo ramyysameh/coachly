@@ -5,6 +5,27 @@
  * below re-themes the whole app without per-component `dark:` classes.
  */
 @theme {
+  /*
+   * Type sizes in rem so they follow the user's text-size setting. Each size carries its own
+   * leading and tracking: small text opens up slightly, large text tightens (Apple's optical rule).
+   * An explicit tracking or leading class still overrides these (e.g. uppercase tracking-wide labels).
+   */
+  --text-2xs: 0.625rem; /* 10px: counters inside badges */
+  --text-2xs--line-height: 1;
+  --text-2xs--letter-spacing: 0.02em;
+  --text-label: 0.6875rem; /* 11px: tab labels, column heads, chart captions */
+  --text-label--line-height: 1.35;
+  --text-label--letter-spacing: 0.01em;
+  --text-body: 0.9375rem; /* 15px: control and list text */
+  --text-body--line-height: 1.45;
+  --text-body--letter-spacing: -0.005em;
+  --text-title: 1.625rem; /* 26px: page titles */
+  --text-title--line-height: 1.15;
+  --text-title--letter-spacing: -0.02em;
+  --text-display: 1.75rem; /* 28px: the hero heading on Today */
+  --text-display--line-height: 1.1;
+  --text-display--letter-spacing: -0.022em;
+
   --color-brand: #0f766e;
   --color-brand-dark: #115e59;
   --color-brand-fg: #ffffff; /* text on a brand fill */
@@ -129,5 +150,37 @@ body {
   }
   [data-vaul-drawer][data-state="closed"] {
     animation-name: fade-out !important;
+  }
+}
+
+/*
+ * Translucent chrome (the phone header and tab bar, marked .chrome) turns solid for people who
+ * asked for less transparency or more contrast. Unlayered, so it beats the bg and backdrop utilities.
+ */
+@media (prefers-reduced-transparency: reduce) {
+  .chrome {
+    background-color: var(--color-surface);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* More contrast: solid chrome, and hairlines and secondary text darken (or lighten in dark mode). */
+@media (prefers-contrast: more) {
+  :root {
+    --color-line: #94a3b8;
+    --color-muted: #3f4c5e;
+  }
+  .chrome {
+    background-color: var(--color-surface);
+    border-color: var(--color-line);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+@media (prefers-contrast: more) and (prefers-color-scheme: dark) {
+  :root {
+    --color-line: #64748b;
+    --color-muted: #cbd5e1;
   }
 }

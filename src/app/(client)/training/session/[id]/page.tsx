@@ -392,7 +392,7 @@ function ExerciseCard({
       </div>
 
       <div className="px-2 py-1">
-        <div className="grid grid-cols-[2rem_4.5rem_1fr_1fr_3.25rem] items-center gap-1.5 px-1 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted">
+        <div className="grid grid-cols-[2rem_4.5rem_1fr_1fr_3.25rem] items-center gap-1.5 px-1 py-1 text-label font-semibold uppercase tracking-wide text-muted">
           <span>Set</span>
           <span>Prev</span>
           <span className="text-center">{ex.is_bodyweight ? `+${unit}` : unit}</span>
@@ -561,7 +561,7 @@ function PlateBody({ unit, defaultKg }: { unit: Unit; defaultKg: number | null }
             <div className="flex items-center gap-1" aria-hidden>
               <span className="h-2 w-6 rounded-sm bg-muted/50" />
               {result.plates.map((p, i) => (
-                <span key={i} className="flex w-7 items-center justify-center rounded-md bg-ink font-mono text-[10px] font-semibold text-paper"
+                <span key={i} className="flex w-7 items-center justify-center rounded-md bg-ink font-mono text-2xs font-semibold text-paper"
                   style={{ height: `${2 + (p / biggest) * 4}rem` }}>
                   {p}
                 </span>
@@ -832,7 +832,7 @@ const timerBtn =
 function Stat({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="rounded-xl border border-line bg-surface px-2 py-1.5">
-      <dt className="text-[11px] font-semibold uppercase tracking-wide text-muted">{label}</dt>
+      <dt className="text-label font-semibold uppercase tracking-wide text-muted">{label}</dt>
       <dd className="font-mono text-lg font-semibold tabular-nums">{children}</dd>
     </div>
   );

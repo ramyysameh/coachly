@@ -126,7 +126,7 @@ export default function NutritionDay({ clientId, editable }: { clientId: string;
                         <div className="min-w-0 flex-1">
                           <p className="truncate font-medium">
                             {m.food_name}
-                            {data.pendingIds.has(m.id) && <span className="ml-2 rounded-full bg-warn-bg px-2 py-0.5 text-[11px] font-semibold text-warn">Not synced</span>}
+                            {data.pendingIds.has(m.id) && <span className="ml-2 rounded-full bg-warn-bg px-2 py-0.5 text-label font-semibold text-warn">Not synced</span>}
                           </p>
                           <p className="text-xs text-muted tabular-nums">
                             {m.serving} · {Math.round(m.calories)} kcal · P {Number(m.protein_g)} · C {Number(m.carbs_g)} · F {Number(m.fat_g)}

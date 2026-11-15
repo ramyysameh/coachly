@@ -20,7 +20,7 @@ export default function SessionDetail({ session, unit }: { session: Session; uni
             <div className="flex flex-wrap items-baseline justify-between gap-x-2 border-b border-line px-3 py-2">
               <p className="font-semibold">
                 {ex.exercise_name}
-                {inSuperset.has(ex.id) && <span className="ml-1.5 text-[11px] font-semibold uppercase tracking-wide text-brand-dark">Superset</span>}
+                {inSuperset.has(ex.id) && <span className="ml-1.5 text-label font-semibold uppercase tracking-wide text-brand-dark">Superset</span>}
               </p>
               <p className="text-xs text-muted">
                 Target {ex.target_sets} × {ex.rep_min}-{ex.rep_max}{ex.timed && "s"}
@@ -34,7 +34,7 @@ export default function SessionDetail({ session, unit }: { session: Session; uni
             )}
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-left text-[11px] uppercase tracking-wide text-muted">
+                <tr className="text-left text-label uppercase tracking-wide text-muted">
                   <th className="px-3 py-1 font-semibold">Set</th>
                   <th className="px-3 py-1 font-semibold">Weight</th>
                   <th className="px-3 py-1 font-semibold">{ex.timed ? "Time" : "Reps"}</th>

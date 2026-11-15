@@ -179,15 +179,15 @@ export default function ChatThread({ conversationId, otherName, canSend }: { con
             const showTime = i === 0 || new Date(m.created_at).getTime() - new Date(messages[i - 1].created_at).getTime() > 15 * 60_000;
             return (
               <div key={m.id}>
-                {showTime && <p className="my-2 text-center text-[11px] font-medium text-muted">{fmtDateTime(m.created_at)}</p>}
+                {showTime && <p className="my-2 text-center text-label font-medium text-muted">{fmtDateTime(m.created_at)}</p>}
                 <div className={cn("flex", mine ? "justify-end" : "justify-start")}>
-                  <div className={cn("max-w-[80%] rounded-2xl px-3.5 py-2 text-[15px] leading-snug whitespace-pre-wrap break-words",
+                  <div className={cn("max-w-[80%] rounded-2xl px-3.5 py-2 text-body leading-snug whitespace-pre-wrap break-words",
                     mine ? "rounded-br-md bg-brand text-brand-fg" : "rounded-bl-md border border-line bg-surface text-ink",
                     m.state === "failed" && "bg-danger-bg text-danger border border-danger-line")}>
                     {m.body}
                   </div>
                 </div>
-                <div className={cn("mt-0.5 flex items-center gap-1 text-[11px] text-muted", mine ? "justify-end" : "justify-start")}>
+                <div className={cn("mt-0.5 flex items-center gap-1 text-label text-muted", mine ? "justify-end" : "justify-start")}>
                   {m.state === "sending" && <><Loader2 className="size-3 animate-spin" /> Sending…</>}
                   {m.state === "failed" && (
                     <button onClick={() => deliver(m)} className="flex min-h-8 items-center gap-1 font-semibold text-danger">
