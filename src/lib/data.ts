@@ -85,3 +85,20 @@ export function mealTotals(meals: Pick<Meal, "calories" | "protein_g" | "carbs_g
 }
 
 export const MEALS: Meal["meal"][] = ["breakfast", "lunch", "dinner", "snack"];
+
+export type NutritionPlanMeal = {
+  id: string; plan_id: string; position: number; meal: Meal["meal"]; name: string; details: string | null;
+  calories: number; protein_g: number; carbs_g: number; fat_g: number;
+};
+export type NutritionPlan = {
+  id: string; coach_id: string; client_id: string | null; name: string; notes: string | null;
+  calories: number; protein_g: number; carbs_g: number; fat_g: number; updated_at: string;
+  nutrition_plan_meals: NutritionPlanMeal[];
+};
+export const NUTRITION_PLAN_SELECT = "*, nutrition_plan_meals(*)";
+
+/** Meals in meal-of-day order, then by position within a meal. */
+export function sortNutritionPlan<T extends NutritionPlan | null>(plan: T): T {
+  plan?.nutrition_plan_meals.sort((a, b) => MEALS.indexOf(a.meal) - MEALS.indexOf(b.meal) || a.position - b.position);
+  return plan;
+}
