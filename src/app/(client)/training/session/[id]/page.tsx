@@ -958,7 +958,7 @@ function RestTimer({ rest, leaving, onExited, onClose, onAdjust }: {
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
       // starts below and transparent; the enter spring takes it from there
-      className="fixed inset-x-3 z-40 flex touch-none items-center gap-3 overflow-hidden rounded-2xl bg-ink p-3 pl-4 text-paper opacity-0 shadow-[0_16px_40px_-12px_rgb(2_6_23/0.5)] will-change-transform select-none md:left-auto md:right-8 md:w-80"
+      className="fixed inset-x-3 z-40 flex touch-none items-center gap-3 overflow-hidden rounded-2xl bg-ink p-3 pl-4 text-paper opacity-0 shadow-[0_16px_40px_-12px_rgb(0_0_0/0.9),0_0_0_1px_rgb(255_255_255/0.08)] will-change-transform select-none md:left-auto md:right-8 md:w-80"
       style={{ bottom: "calc(4.75rem + env(safe-area-inset-bottom))", transform: "translate3d(0, 24px, 0)" }}
       role="timer"
       aria-live="polite"

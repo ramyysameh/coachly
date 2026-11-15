@@ -10,7 +10,7 @@ type Series = { key: string; label: string; color: string; dotsOnly?: boolean };
 
 const tooltipStyle = {
   borderRadius: 12, border: "1px solid var(--color-line)", background: "var(--color-surface)",
-  color: "var(--color-ink)", fontSize: 13, boxShadow: "0 8px 24px -12px rgb(15 23 42 / 0.25)",
+  color: "var(--color-ink)", fontSize: 13, boxShadow: "0 16px 32px -12px rgb(0 0 0 / 0.8)",
 };
 const tick = { fontSize: 11, fill: "var(--color-muted)" };
 

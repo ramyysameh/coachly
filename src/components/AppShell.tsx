@@ -130,7 +130,7 @@ export default function AppShell({ profile, children }: { profile: Profile; chil
     <ProfileContext.Provider value={{ profile, unread, refreshUnread }}>
       <div className="min-h-dvh md:flex">
         {/* Desktop sidebar (coaches mainly use this) */}
-        <aside data-recede className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-r border-line bg-surface p-4 md:flex">
+        <aside data-recede className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-r border-line bg-surface/70 p-4 backdrop-blur-xl md:flex">
           <div className="mb-8 px-2">
             <BrandMark />
           </div>
@@ -216,7 +216,8 @@ export default function AppShell({ profile, children }: { profile: Profile; chil
                   active ? "text-brand-dark" : "text-muted active:text-ink",
                 )}
               >
-                <span className={cn("flex h-7 w-12 items-center justify-center rounded-full transition-[background-color,transform] duration-150 ease-out group-active:scale-90", active && "bg-brand/12")}>
+                {active && <span aria-hidden className="absolute inset-x-6 top-0 h-0.5 rounded-b-full bg-brand shadow-[0_0_12px_2px_rgb(225_29_42/0.7)]" />}
+                <span className={cn("flex h-7 w-12 items-center justify-center rounded-full transition-[background-color,transform] duration-150 ease-out group-active:scale-90", active && "bg-brand/15")}>
                   <n.icon className="size-[22px]" strokeWidth={active ? 2.1 : 1.75} aria-hidden />
                 </span>
                 {n.label}
@@ -285,7 +286,7 @@ export default function AppShell({ profile, children }: { profile: Profile; chil
 
 function UnreadDot({ count }: { count: number }) {
   return (
-    <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1.5 font-mono text-2xs font-semibold text-white tabular-nums ring-2 ring-surface" aria-label={`${count} unread`}>
+    <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-brand px-1.5 font-mono text-2xs font-semibold text-white tabular-nums ring-2 ring-surface" aria-label={`${count} unread`}>
       {count > 99 ? "99+" : <NumberFlow value={count} />}
     </span>
   );

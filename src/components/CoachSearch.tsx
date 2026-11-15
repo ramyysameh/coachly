@@ -109,7 +109,7 @@ function OpenDialog({ onClose, label, children }: { onClose: () => void; label: 
       onClose={() => !ref.current?.open && onClose()}
       // The inner panel fills the dialog box, so a click that targets the <dialog> itself hit the backdrop.
       onClick={(e) => e.target === e.currentTarget && ref.current?.close()}
-      className="m-auto mt-[12vh] w-[min(560px,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-line bg-surface p-0 text-ink shadow-raised backdrop:bg-slate-950/50"
+      className="m-auto mt-[12vh] w-[min(560px,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-line bg-surface p-0 text-ink shadow-float backdrop:bg-black/70"
     >
       <div className="max-h-[70vh] overflow-y-auto overscroll-contain p-3">{children}</div>
     </dialog>

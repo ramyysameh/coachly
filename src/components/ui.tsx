@@ -5,6 +5,7 @@ import { AlertTriangle, Dumbbell, Loader2, RotateCw } from "lucide-react";
 import { useLayoutEffect, useRef } from "react";
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
+import { Plate } from "@/components/Depth";
 
 type Variant = "primary" | "secondary" | "ghost" | "danger";
 
@@ -15,8 +16,8 @@ type Variant = "primary" | "secondary" | "ghost" | "danger";
 const press = "transition-[background-color,border-color,color,box-shadow,transform] duration-150 ease-out enabled:active:scale-[0.98]";
 
 const variants: Record<Variant, string> = {
-  primary: "bg-brand text-brand-fg shadow-raised hover:bg-brand-dark disabled:bg-brand/45 disabled:shadow-none",
-  secondary: "bg-surface text-ink border border-line shadow-card hover:border-muted/40 hover:bg-surface-2 disabled:opacity-50",
+  primary: "btn-3d bg-brand text-brand-fg hover:brightness-110 disabled:bg-brand/40 disabled:text-brand-fg/70",
+  secondary: "panel text-ink border border-line shadow-card hover:border-muted/40 hover:bg-surface-2 disabled:opacity-50",
   ghost: "text-ink hover:bg-surface-2 disabled:opacity-50",
   danger: "bg-surface text-danger border border-danger-line hover:bg-danger-bg disabled:opacity-50",
 };
@@ -101,7 +102,7 @@ export function Textarea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
 export function Card({ className, children }: { className?: string; children: ReactNode }) {
   // cn() only joins classes, so skip the default padding when the caller sets its own.
   const ownPadding = /(^|\s)p-\S+/.test(className ?? "");
-  return <div className={cn("rounded-2xl border border-line bg-surface shadow-card", !ownPadding && "p-4", className)}>{children}</div>;
+  return <div className={cn("panel rounded-2xl border border-line shadow-card", !ownPadding && "p-4", className)}>{children}</div>;
 }
 
 export function Spinner({ label = "Loading…" }: { label?: string }) {
@@ -146,7 +147,7 @@ export function PageHeader({ title, subtitle, action }: { title: string; subtitl
   return (
     <div className="mb-5 flex items-end justify-between gap-3">
       <div className="min-w-0">
-        <h1 className="truncate text-title font-semibold text-ink md:text-3xl md:leading-tight md:tracking-tight">{title}</h1>
+        <h1 className="truncate font-display text-[2rem] leading-none font-bold tracking-tight text-ink md:text-[2.5rem]">{title}</h1>
         {subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}
       </div>
       {action}
@@ -230,7 +231,7 @@ export function Tabs<T extends string>({ value, onChange, options }: { value: T;
       <span
         ref={thumb}
         aria-hidden
-        className="absolute inset-y-1 left-0 -z-10 rounded-lg bg-surface opacity-0 shadow-card ring-1 ring-line transition-[transform,width] duration-300 ease-out-quart motion-reduce:transition-none"
+        className="absolute inset-y-1 left-0 -z-10 rounded-lg bg-surface-3 opacity-0 shadow-card ring-1 ring-white/5 transition-[transform,width] duration-300 ease-out-quart motion-reduce:transition-none"
       />
       {options.map((o) => (
         <button
@@ -263,10 +264,10 @@ export function Avatar({ name, src, size = "md" }: { name: string; src?: string 
 export function BrandMark({ compact }: { compact?: boolean }) {
   return (
     <span className="flex items-center gap-2.5">
-      <span className={cn("flex items-center justify-center rounded-[10px] bg-brand text-brand-fg shadow-raised", compact ? "size-7" : "size-8")}>
+      <span className={cn("btn-3d flex items-center justify-center rounded-[10px] bg-brand text-brand-fg", compact ? "size-7" : "size-8")}>
         <Dumbbell className={compact ? "size-4" : "size-[18px]"} strokeWidth={2.25} aria-hidden />
       </span>
-      <span className={cn("font-semibold tracking-tight text-ink", compact ? "text-base" : "text-lg")}>Coachly</span>
+      <span className={cn("font-display font-bold italic tracking-wide text-ink uppercase", compact ? "text-xl" : "text-2xl")}>Coachly</span>
     </span>
   );
 }
@@ -275,16 +276,17 @@ export function BrandMark({ compact }: { compact?: boolean }) {
 export function CenteredPage({ children, card = true, role }: { children: ReactNode; card?: boolean; role?: string }) {
   return (
     <main className="relative flex min-h-dvh flex-col items-center justify-center overflow-hidden px-5 py-10" role={role}>
-      {/* soft brand wash behind the content; purely decorative */}
+      {/* red floor light under the plate; purely decorative */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 h-[420px] bg-[radial-gradient(60%_60%_at_50%_0%,color-mix(in_oklab,var(--color-brand)_14%,transparent),transparent)]"
+        className="pointer-events-none absolute inset-x-0 top-0 h-[520px] bg-[radial-gradient(50%_55%_at_50%_18%,color-mix(in_oklab,var(--color-brand)_22%,transparent),transparent)]"
       />
       <div className="relative w-full max-w-[400px] animate-enter">
-        <div className="mb-8 flex justify-center">
+        <div className="mb-6 flex flex-col items-center gap-5">
+          <Plate size={128} depth={16} spin />
           <BrandMark />
         </div>
-        {card ? <div className="rounded-2xl border border-line bg-surface p-6 shadow-card sm:p-7">{children}</div> : children}
+        {card ? <div className="panel rounded-2xl border border-line p-6 shadow-card sm:p-7">{children}</div> : children}
       </div>
     </main>
   );
