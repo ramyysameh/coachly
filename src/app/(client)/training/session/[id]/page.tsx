@@ -9,6 +9,7 @@ import { ExerciseBrowser, useLibrary } from "@/components/ExerciseLibrary";
 import { BAR_OPTIONS, PLATES, platesPerSide, RPE_CHOICES, warmupRamp } from "@/lib/gymMath";
 import { createClient } from "@/lib/supabase/client";
 import { playChime, primeChime } from "@/lib/chime";
+import { prefersReducedMotion, project, releaseVelocity, rubberband, springTo, type SpringState } from "@/lib/motion";
 import { useAsync, must } from "@/lib/useAsync";
 import { SESSION_SELECT, sortSession, type Exercise, type Session, type SessionExercise, type SessionSet, type SetType } from "@/lib/data";
 import { useProfile } from "@/components/AppShell";
@@ -59,6 +60,9 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
   const { profile } = useProfile();
   const unit = profile.weight_unit;
   const [rest, setRest] = useState<{ until: number; total: number } | null>(null);
+  // The last rest shown, kept after `rest` clears so the timer can animate out before it unmounts.
+  const [timerShown, setTimerShown] = useState<{ until: number; total: number } | null>(null);
+  if (rest && rest !== timerShown) setTimerShown(rest);
   const [finishing, setFinishing] = useState(false);
   const [confirmFinish, setConfirmFinish] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -266,9 +270,11 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
 
       {/* Room for the floating rest timer, so it never covers the last sets or the Finish button. */}
       {rest && <div aria-hidden className="h-20" />}
-      {rest && (
+      {(rest || timerShown) && (
         <RestTimer
-          rest={rest}
+          rest={rest ?? timerShown!}
+          leaving={!rest}
+          onExited={() => setTimerShown(null)}
           onClose={() => setRest(null)}
           // −15 past zero ends the rest; the bar restarts from the new remaining share
           onAdjust={(sec) => setRest((r) => (r ? { until: r.until + sec * 1000, total: Math.max(1, r.total + sec) } : r))}
@@ -659,6 +665,9 @@ function SetRow({
       setErr(FILL_FIRST);
       return;
     }
+    // A short tick on the commit itself, in the same frame as the ✓ filling in (save() updates the
+    // row before it awaits). PRs keep their own longer pattern so the two stay distinguishable.
+    navigator.vibrate?.(10);
     const ok = await save(timed ? { weight_kg, duration_s: r, completed: true } : { weight_kg, reps: r, completed: true });
     if (ok) {
       // Timed sets have no reps, so they never count as a rep or weight-for-reps PR.
@@ -852,7 +861,96 @@ function Elapsed({ from, to }: { from: string; to: string | null }) {
   return <>{h ? `${h}:${String(m).padStart(2, "0")}` : m}:{String(s).padStart(2, "0")}</>;
 }
 
-function RestTimer({ rest, onClose, onAdjust }: { rest: { until: number; total: number }; onClose: () => void; onAdjust: (sec: number) => void }) {
+/**
+ * Floating rest timer. Enters from below and leaves the same way (or fades, with reduced motion).
+ * It can be swiped down to dismiss: it tracks the finger 1:1, resists upward drags, and on release
+ * projects the flick's momentum to decide between dismissing and springing back, carrying the
+ * finger's velocity into either animation.
+ */
+function RestTimer({ rest, leaving, onExited, onClose, onAdjust }: {
+  rest: { until: number; total: number };
+  /** The rest was cleared: animate out, then call onExited. A new rest while leaving brings it back. */
+  leaving: boolean;
+  onExited: () => void;
+  onClose: () => void;
+  onAdjust: (sec: number) => void;
+}) {
+  const card = useRef<HTMLDivElement>(null);
+  const motion = useRef<SpringState>({ value: 24, velocity: 0 });
+  const cancel = useRef<(() => void) | null>(null);
+  const drag = useRef<{ id: number; startY: number; startX: number; from: number; active: boolean; samples: { t: number; y: number }[] } | null>(null);
+
+  // Opacity follows the offset, so the card reads as leaving while it is pulled down.
+  const paint = (y: number) => {
+    const el = card.current;
+    if (!el) return;
+    el.style.transform = `translate3d(0, ${y}px, 0)`;
+    el.style.opacity = String(Math.max(0, Math.min(1, 1 - Math.max(0, y) / (el.offsetHeight * 1.5))));
+  };
+  const animate = (target: number, onDone?: () => void) => {
+    cancel.current?.();
+    cancel.current = springTo(motion.current, target, paint, { response: 0.32, onDone });
+  };
+  const exitDistance = () => (card.current?.offsetHeight ?? 80) + 96;
+
+  // Enter on mount; on leaving, exit along the same path (or fade). Interruptible either way.
+  useLayoutEffect(() => {
+    const el = card.current;
+    if (!el) return;
+    if (prefersReducedMotion()) {
+      cancel.current?.();
+      motion.current = { value: 0, velocity: 0 };
+      el.style.transform = "none";
+      const a = el.animate([{ opacity: leaving ? 1 : 0 }, { opacity: leaving ? 0 : 1 }], { duration: 200, easing: "ease-out", fill: "forwards" });
+      if (leaving) a.onfinish = onExited;
+      cancel.current = () => a.cancel();
+      return;
+    }
+    if (leaving) animate(exitDistance(), onExited);
+    else animate(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leaving]);
+  useEffect(() => () => cancel.current?.(), []);
+
+  function onPointerDown(e: React.PointerEvent) {
+    if (leaving || (e.target as Element).closest("button")) return;
+    drag.current = { id: e.pointerId, startY: e.clientY, startX: e.clientX, from: motion.current.value, active: false, samples: [{ t: e.timeStamp, y: e.clientY }] };
+  }
+  function onPointerMove(e: React.PointerEvent) {
+    const d = drag.current;
+    if (!d || d.id !== e.pointerId) return;
+    const dy = e.clientY - d.startY;
+    if (!d.active) {
+      // ~8px of hysteresis before committing to a vertical drag; a sideways move is not ours.
+      if (Math.abs(e.clientX - d.startX) > 8 && Math.abs(e.clientX - d.startX) > Math.abs(dy)) return void (drag.current = null);
+      if (Math.abs(dy) < 8) return;
+      d.active = true;
+      card.current?.setPointerCapture(e.pointerId);
+      cancel.current?.(); // grab it mid-flight: it continues from where it is now
+      d.startY = e.clientY;
+      d.from = motion.current.value;
+    }
+    d.samples.push({ t: e.timeStamp, y: e.clientY });
+    if (d.samples.length > 8) d.samples.shift();
+    const raw = d.from + (e.clientY - d.startY);
+    const y = raw >= 0 ? raw : rubberband(raw, card.current?.offsetHeight ?? 80);
+    motion.current = { value: y, velocity: 0 };
+    paint(y);
+  }
+  function onPointerUp(e: React.PointerEvent) {
+    const d = drag.current;
+    drag.current = null;
+    if (!d?.active || d.id !== e.pointerId) return;
+    const v = e.type === "pointercancel" ? 0 : releaseVelocity(d.samples);
+    motion.current.velocity = v;
+    const landing = motion.current.value + project(v);
+    if (landing > (card.current?.offsetHeight ?? 80) * 0.5) {
+      onClose(); // the exit spring (on `leaving`) starts from this position and velocity
+    } else {
+      animate(0);
+    }
+  }
+
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 250);
@@ -873,16 +971,27 @@ function RestTimer({ rest, onClose, onAdjust }: { rest: { until: number; total: 
     el.style.transform = "scaleX(0)";
   }, [rest.until, rest.total]);
   useEffect(() => {
-    if (left === 0) {
+    if (left === 0 && !leaving) {
       navigator.vibrate?.(200);
       playChime();
       const t = setTimeout(onClose, 2500);
       return () => clearTimeout(t);
     }
-  }, [left, onClose]);
+  }, [left, leaving, onClose]);
   return (
-    <div className="fixed inset-x-3 z-40 flex animate-enter items-center gap-3 overflow-hidden rounded-2xl bg-ink p-3 pl-4 text-paper shadow-[0_16px_40px_-12px_rgb(2_6_23/0.5)] md:left-auto md:right-8 md:w-80"
-      style={{ bottom: "calc(4.75rem + env(safe-area-inset-bottom))" }} role="timer" aria-live="polite">
+    <div
+      ref={card}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
+      // starts below and transparent; the enter spring takes it from there
+      className="fixed inset-x-3 z-40 flex touch-none items-center gap-3 overflow-hidden rounded-2xl bg-ink p-3 pl-4 text-paper opacity-0 shadow-[0_16px_40px_-12px_rgb(2_6_23/0.5)] will-change-transform select-none md:left-auto md:right-8 md:w-80"
+      style={{ bottom: "calc(4.75rem + env(safe-area-inset-bottom))", transform: "translate3d(0, 24px, 0)" }}
+      role="timer"
+      aria-live="polite"
+      aria-hidden={leaving || undefined}
+    >
       <Timer className="size-6 shrink-0" aria-hidden />
       <div className="min-w-0 flex-1">
         <p className="text-xs text-paper/70">{left === 0 ? "Rest done. Next set!" : "Rest"}</p>
