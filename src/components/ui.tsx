@@ -5,7 +5,7 @@ import { AlertTriangle, Dumbbell, Loader2, RotateCw } from "lucide-react";
 import { useLayoutEffect, useRef } from "react";
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
-import { Plate } from "@/components/Depth";
+import { Loader3D, Plate } from "@/components/Depth";
 
 type Variant = "primary" | "secondary" | "ghost" | "danger";
 
@@ -106,11 +106,7 @@ export function Card({ className, children }: { className?: string; children: Re
 }
 
 export function Spinner({ label = "Loading…" }: { label?: string }) {
-  return (
-    <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted" role="status">
-      <Loader2 className="size-4 animate-spin" aria-hidden /> {label}
-    </div>
-  );
+  return <Loader3D label={label} />;
 }
 
 export function Skeleton({ className }: { className?: string }) {

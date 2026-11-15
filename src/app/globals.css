@@ -296,3 +296,143 @@ a.btn-3d:active {
   box-shadow: none;
   background-image: none;
 }
+
+/* ---------- 3D loader ---------- */
+
+/* The plate flips a full turn with a pause at each face, and bobs while its shadow breathes. */
+.loader-plate .plate {
+  animation: loader-spin 1.6s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+.loader-bob {
+  animation: loader-bob 1.6s ease-in-out infinite;
+}
+.loader-shadow {
+  animation: loader-shadow 1.6s ease-in-out infinite;
+}
+@keyframes loader-spin {
+  from { transform: rotateX(14deg) rotateY(0deg); }
+  to { transform: rotateX(14deg) rotateY(360deg); }
+}
+@keyframes loader-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+@keyframes loader-shadow {
+  0%, 100% { transform: scaleX(1); opacity: 0.8; }
+  50% { transform: scaleX(0.7); opacity: 0.45; }
+}
+
+/* ---------- 3D medal ---------- */
+
+.medal {
+  position: relative;
+  transform-style: preserve-3d;
+  transform: rotateX(10deg) rotateY(-20deg);
+}
+.medal > span {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  backface-visibility: visible;
+}
+.medal > .medal-rim {
+  background: radial-gradient(circle, #7a5208 0 70%, #4a3104 70.5% 100%);
+}
+.medal > .medal-face {
+  background:
+    radial-gradient(circle at 34% 26%, rgb(255 255 255 / 0.55), transparent 38%),
+    radial-gradient(circle, #ffe28a 0 54%, #c98d12 54.5% 58%, #ffd25c 58.5% 72%, var(--color-brand) 72.5% 82%, #8f0d16 82.5% 86%, #e8b43a 86.5% 100%);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.25), inset 0 -6px 14px rgb(120 70 0 / 0.45);
+}
+
+/* ---------- Achievement pop-up ---------- */
+
+.ach-backdrop {
+  animation: fade-in 200ms ease-out both;
+}
+.ach-backdrop[data-leaving] {
+  animation: fade-out 220ms ease-in both;
+}
+.ach-card {
+  animation: ach-card-in 520ms var(--ease-out-quart) both;
+}
+.ach-backdrop[data-leaving] .ach-card {
+  animation: ach-card-out 220ms ease-in both;
+}
+@keyframes ach-card-in {
+  from { opacity: 0; transform: perspective(900px) translateY(24px) rotateX(24deg) scale(0.9); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes ach-card-out {
+  to { opacity: 0; transform: translateY(-12px) scale(0.96); }
+}
+/* the medal drops in spinning two and a half turns, then settles into a slow sway */
+.ach-medal .medal {
+  animation:
+    ach-medal-in 1100ms cubic-bezier(0.2, 0.9, 0.25, 1.1) both,
+    ach-medal-sway 3.2s ease-in-out 1100ms infinite;
+}
+@keyframes ach-medal-in {
+  from { transform: translateY(-90px) rotateX(30deg) rotateY(-900deg) scale(0.4); }
+  to { transform: rotateX(10deg) rotateY(-20deg) scale(1); }
+}
+@keyframes ach-medal-sway {
+  0%, 100% { transform: rotateX(10deg) rotateY(-20deg); }
+  50% { transform: rotateX(6deg) rotateY(20deg); }
+}
+/* light rays turning behind the medal */
+.ach-rays {
+  background: repeating-conic-gradient(from 0deg, color-mix(in oklab, var(--color-brand) 35%, transparent) 0deg 8deg, transparent 8deg 24deg);
+  mask-image: radial-gradient(circle, black 20%, transparent 68%);
+  animation: ach-rays 9s linear infinite, fade-in 600ms ease-out both;
+}
+@keyframes ach-rays {
+  to { transform: rotate(360deg); }
+}
+/* confetti: each piece flies out along its own --dx/--dy and tumbles */
+.ach-confetti {
+  position: absolute;
+  left: 50%;
+  top: 38%;
+  width: 8px;
+  height: 14px;
+  border-radius: 2px;
+  opacity: 0;
+  animation: ach-confetti 1300ms cubic-bezier(0.15, 0.7, 0.3, 1) var(--delay, 0ms) both;
+}
+@keyframes ach-confetti {
+  0% { opacity: 1; transform: translate(-50%, -50%) rotate(0deg) scale(0.6); }
+  80% { opacity: 1; }
+  100% { opacity: 0; transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) rotate(var(--rot)) scale(1); }
+}
+.ach-progress {
+  transform-origin: left;
+  animation: ach-progress var(--ach-ms, 3600ms) linear both;
+}
+@keyframes ach-progress {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loader-plate .plate,
+  .loader-bob,
+  .loader-shadow {
+    animation: none;
+  }
+  .loader-plate {
+    animation: fade-in 900ms ease-in-out infinite alternate;
+  }
+  .ach-card,
+  .ach-backdrop[data-leaving] .ach-card {
+    animation-name: fade-in;
+  }
+  .ach-backdrop[data-leaving] .ach-card { animation-name: fade-out; }
+  .ach-medal .medal,
+  .ach-rays {
+    animation: none;
+  }
+  .ach-confetti {
+    display: none;
+  }
+}
