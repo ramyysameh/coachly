@@ -265,6 +265,10 @@ test("picker fuzzy-matches and adds with the keyboard", async ({ browser }) => {
     const options = picker.locator("[cmdk-list]").getByRole("option");
     await expect(options.first()).toContainText("Incline Dumbbell Press");
     await page.keyboard.press("Enter");
+    // The picker stays open for the next pick and marks what was added.
+    await expect(picker.getByText(/^1 added to /)).toBeVisible();
+    await expect(options.first()).toContainText("Added");
+    await picker.getByRole("button", { name: "Done" }).click();
     await expect(picker).toHaveCount(0);
     await expect(rows).toHaveCount(before + 1);
     await expect(rows.last()).toContainText("Incline Dumbbell Press");
@@ -275,6 +279,80 @@ test("picker fuzzy-matches and adds with the keyboard", async ({ browser }) => {
     if ((await rows.count()) > before) await removeBtn(before).click();
     await expect(rows).toHaveCount(before);
   }
+});
+
+test("the picker stays open so several exercises can be added in order", async ({ browser }) => {
+  const page = await phone(browser, "coach@demo.test");
+  await openFirstTemplate(page);
+  const addBtn = page.getByRole("button", { name: "Add exercise" }).first();
+  const rows = addBtn.locator("xpath=preceding-sibling::ul[1]/li").filter({ has: page.getByRole("button", { name: "Remove exercise" }) });
+  await expect(rows.first()).toBeVisible();
+  const before = await rows.count();
+  try {
+    await addBtn.click();
+    const picker = page.getByRole("dialog", { name: "Exercise library" });
+    const options = picker.locator("[cmdk-list]").getByRole("option");
+    await picker.getByLabel("Search exercises").fill("press");
+    await expect(options.nth(1)).toBeVisible();
+    const nameOf = (i: number) => options.nth(i).locator(".truncate").first().innerText();
+    const first = await nameOf(0);
+    const second = await nameOf(1);
+    await options.nth(0).click();
+    await expect(picker.getByText(/^1 added to /)).toBeVisible();
+    await expect(options.nth(0)).toContainText("Added");
+    await options.nth(1).click();
+    await expect(picker.getByText(/^2 added to /)).toBeVisible();
+    await picker.getByRole("button", { name: "Done" }).click();
+    await expect(picker).toHaveCount(0);
+    await expect(rows).toHaveCount(before + 2);
+    // Added in the order picked, after what the day already had.
+    await expect(rows.nth(before)).toContainText(first);
+    await expect(rows.nth(before + 1)).toContainText(second);
+  } finally {
+    if (await page.getByRole("dialog", { name: "Exercise library" }).count()) await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog", { name: "Exercise library" })).toHaveCount(0);
+    while ((await rows.count()) > before) {
+      const n = await rows.count();
+      await rows.nth(before).getByRole("button", { name: "Remove exercise" }).click();
+      await expect(rows).toHaveCount(n - 1);
+    }
+  }
+});
+
+test("quick weekday taps on a plan day are all saved", async ({ browser }) => {
+  const page = await phone(browser, "coach@demo.test");
+  const name = `Weekdays ${stamp}`;
+  try {
+    await newTemplate(page, name);
+    await page.getByRole("link", { name }).first().click();
+    await page.waitForURL("**/coach/plans/*");
+    const days = page.getByRole("group", { name: / weekdays$/ }).first();
+    await expect(days).toBeVisible();
+    const off = days.locator('button[aria-pressed="false"]');
+    const labels = [await off.nth(0).innerText(), await off.nth(1).innerText()];
+    // Two taps back to back, without waiting for the first save.
+    await days.getByRole("button", { name: labels[0], exact: true }).click();
+    await days.getByRole("button", { name: labels[1], exact: true }).click();
+    for (const l of labels) await expect(days.getByRole("button", { name: l, exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("status").filter({ hasText: "All changes saved" })).toBeVisible();
+    await page.reload();
+    for (const l of labels) await expect(days.getByRole("button", { name: l, exact: true })).toHaveAttribute("aria-pressed", "true");
+  } finally {
+    await removeTemplateIfPresent(page, name);
+  }
+});
+
+test("login ignores a next link that points at another site", async ({ browser }) => {
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const page = await ctx.newPage();
+  await page.goto("/login?next=//example.com/phish");
+  await page.getByLabel("Email").fill("coach@demo.test");
+  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByRole("button", { name: "Log in" }).click();
+  await page.waitForURL((u) => !u.pathname.startsWith("/login"));
+  expect(new URL(page.url()).origin).toBe(new URL(test.info().project.use.baseURL ?? "http://localhost:3000").origin);
+  // The fallback is "/", which then redirects a coach to their dashboard.
+  await page.waitForURL(/\/coach$/);
 });
 
 test("Escape closes only the top sheet", async ({ browser }) => {
@@ -372,6 +450,47 @@ test("calorie meter number animates to the new total", async ({ browser }) => {
   } finally {
     await removeMealIfPresent(page, name);
   }
+});
+
+test("a recently logged food fills the Add food form in one tap", async ({ browser }) => {
+  const page = await phone(browser, "alex@demo.test");
+  const name = `Recent ${stamp}`;
+  try {
+    await addMeal(page, name);
+    await page.locator("main section", { hasText: "Lunch" }).getByRole("button", { name: "Add food" }).click();
+    const d = page.getByRole("dialog", { name: "Add food" });
+    await d.getByRole("group", { name: "Recently logged" }).getByRole("button", { name: new RegExp(name) }).click();
+    await expect(d.getByLabel("Food")).toHaveValue(name);
+    await expect(d.getByLabel("Serving size")).toHaveValue("1");
+    await expect(d.getByLabel("Calories (kcal)")).toHaveValue("100");
+    await page.keyboard.press("Escape");
+    await expect(d).toHaveCount(0);
+  } finally {
+    await removeMealIfPresent(page, name);
+  }
+});
+
+test("removing a set can be undone with its logged values", async ({ browser }) => {
+  const page = await phone(browser, "alex@demo.test");
+  await page.goto("/training");
+  await page.getByRole("tab", { name: "History" }).click();
+  await page.locator('a[href^="/training/session/"]').first().click();
+  const card = page.locator("main section[aria-label]").first();
+  const checks = card.getByRole("button", { name: /^(Complete|Mark) set \d+/ });
+  await expect(checks.first()).toBeVisible();
+  const before = await checks.count();
+  const n = (await checks.last().getAttribute("aria-label"))!.match(/\d+/)![0];
+  const reps = await card.getByLabel(`Set ${n} reps`).inputValue();
+  const done = await checks.last().getAttribute("aria-pressed");
+  await card.getByRole("button", { name: "Remove last set" }).click();
+  await expect(checks).toHaveCount(before - 1);
+  await toast(page, `Set ${n} removed`).getByRole("button", { name: "Undo" }).click();
+  await expect(checks).toHaveCount(before);
+  await expect(card.getByLabel(`Set ${n} reps`)).toHaveValue(reps);
+  await expect(checks.last()).toHaveAttribute("aria-pressed", done!);
+  // And it's really back on the server, not just on screen.
+  await page.reload();
+  await expect(card.getByRole("button", { name: /^(Complete|Mark) set \d+/ })).toHaveCount(before);
 });
 
 test("set counter and progress bar update on check", async ({ browser }) => {
@@ -566,6 +685,10 @@ test("Ctrl+K opens search on desktop", async ({ browser }) => {
   await expect(page.getByRole("dialog", { name: "Search" })).toHaveCount(1);
   await expect(page.getByRole("dialog", { name: "Search" })).toBeVisible();
   await expect(page.getByRole("dialog", { name: "Search" }).getByRole("combobox")).toBeFocused();
+  // A keyboard shortcut opens instantly: no enter animation, and Escape closes it.
+  expect(await page.getByRole("dialog", { name: "Search" }).evaluate((el) => el.getAnimations({ subtree: true }).length)).toBe(0);
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: "Search" })).toHaveCount(0);
 });
 
 test("clients never see coach search", async ({ browser }) => {
@@ -602,4 +725,40 @@ test("Create custom exercise in the picker starts from the typed search", async 
   await picker.getByRole("button", { name: "Create custom exercise" }).click();
   const form = page.getByRole("dialog", { name: "Custom exercise" });
   await expect(form.getByLabel("Name")).toHaveValue("zercher squat");
+});
+
+test("the chat box grows with a long message", async ({ browser }) => {
+  const page = await phone(browser, "alex@demo.test");
+  await page.goto("/chat");
+  const box = page.getByLabel("Message");
+  const oneLine = (await box.boundingBox())!.height;
+  await box.fill(["line one", "line two", "line three"].join("\n"));
+  await expect.poll(async () => (await box.boundingBox())!.height).toBeGreaterThan(oneLine + 20);
+  await box.fill(Array.from({ length: 20 }, (_, i) => `line ${i}`).join("\n"));
+  await expect.poll(async () => (await box.boundingBox())!.height).toBeLessThanOrEqual(128 + 1); // capped at max-h-32
+  await box.fill("");
+  await expect.poll(async () => (await box.boundingBox())!.height).toBe(oneLine);
+});
+
+test("a coach opening an invite can log out right there", async ({ browser }) => {
+  const page = await phone(browser, "coach@demo.test");
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.goto("/coach/invite");
+  let token: string | undefined;
+  try {
+    await page.getByRole("button", { name: /Create & copy link/ }).click();
+    await expect(toast(page, "Invite link copied")).toBeVisible();
+    token = (await page.evaluate(() => navigator.clipboard.readText())).split("/invite/")[1];
+    await page.goto(`/invite/${token}`);
+    await expect(page.getByText("You're signed in as a coach.")).toBeVisible();
+    await page.getByRole("button", { name: "Log out" }).click();
+    await expect(page.getByRole("link", { name: "Create client account" })).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`/invite/${token}$`));
+  } finally {
+    if (token) {
+      const { api } = await signedInApi("coach@demo.test");
+      const { error } = await api.from("invitations").delete().eq("token", token);
+      expect(error).toBeNull();
+    }
+  }
 });

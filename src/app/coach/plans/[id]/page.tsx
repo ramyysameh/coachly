@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { use, useState } from "react";
+import { use, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, ChevronLeft, Info, Plus, Trash2, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useAsync, must } from "@/lib/useAsync";
@@ -18,6 +18,10 @@ export default function PlanBuilderPage({ params }: { params: Promise<{ id: stri
   const deleting = useSheet<PlanDay>();
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState(false);
+  // The picker stays open so a coach can add a whole day in one go. Positions count up from where the
+  // day ended when the picker opened, since `picker.item` is a snapshot that doesn't see the new rows.
+  const [added, setAdded] = useState<ReadonlyMap<string, number>>(new Map());
+  const nextPosition = useRef(0);
 
   const { data, loading, error, reload } = useAsync(async () => {
     const plan = sortPlan(must(await supabase.from("plans").select(PLAN_SELECT).eq("id", id).maybeSingle()) as Plan | null);
@@ -108,7 +112,11 @@ export default function PlanBuilderPage({ params }: { params: Promise<{ id: stri
           write={write}
           onMove={(dir) => move("plan_days", plan.plan_days, di, dir)}
           onMoveExercise={(i, dir) => move("plan_exercises", day.plan_exercises, i, dir)}
-          onAddExercise={() => picker.show(day)}
+          onAddExercise={() => {
+            nextPosition.current = day.plan_exercises.length;
+            setAdded(new Map());
+            picker.show(day);
+          }}
           onDelete={() => deleting.show(day)}
         />
       ))}
@@ -138,21 +146,25 @@ export default function PlanBuilderPage({ params }: { params: Promise<{ id: stri
 
       <ExercisePicker
         {...picker.bind}
+        dayName={picker.item?.name ?? ""}
+        added={added}
+        onDone={picker.close}
         onPick={async (ex) => {
           const day = picker.item;
           if (!day) return;
-          picker.close();
-          await write(() =>
+          const position = nextPosition.current++;
+          const ok = await write(() =>
             supabase.from("plan_exercises").insert({
               plan_day_id: day.id,
               exercise_id: ex.id,
-              position: day.plan_exercises.length,
+              position,
               target_sets: 3,
               rep_min: ex.is_bodyweight ? 8 : 8,
               rep_max: ex.is_bodyweight ? 15 : 12,
               rest_seconds: 90,
             }),
           );
+          if (ok) setAdded((m) => new Map(m).set(ex.id, (m.get(ex.id) ?? 0) + 1));
         }}
       />
     </div>
@@ -166,9 +178,25 @@ function DayCard({ day, first, last, write, onMove, onMoveExercise, onAddExercis
   onMove: (dir: -1 | 1) => void; onMoveExercise: (i: number, dir: -1 | 1) => void; onAddExercise: () => void; onDelete: () => void;
 }) {
   const supabase = createClient();
+  // Weekday taps show at once and their writes run one after another. Each tap builds on the previous
+  // tap (not on `day`, which only updates after a reload), so quick taps on Mon then Wed keep both.
+  const [optimistic, setOptimistic] = useState<number[] | null>(null);
+  const latest = useRef<number[]>(day.weekdays);
+  const pending = useRef(0);
+  const queue = useRef<Promise<unknown>>(Promise.resolve());
+  const weekdays = optimistic ?? day.weekdays;
   function toggleDay(w: number) {
-    const next = day.weekdays.includes(w) ? day.weekdays.filter((x) => x !== w) : [...day.weekdays, w].sort();
-    write(() => supabase.from("plan_days").update({ weekdays: next }).eq("id", day.id));
+    const base = pending.current ? latest.current : day.weekdays;
+    const next = base.includes(w) ? base.filter((x) => x !== w) : [...base, w].sort((a, b) => a - b);
+    latest.current = next;
+    setOptimistic(next);
+    pending.current++;
+    queue.current = queue.current
+      .then(() => write(() => supabase.from("plan_days").update({ weekdays: next }).eq("id", day.id)))
+      .finally(() => {
+        // Once the last write is in, show the reloaded server copy (it equals `next` unless a write failed).
+        if (--pending.current === 0) setOptimistic(null);
+      });
   }
   return (
     <section className="rounded-2xl border border-line bg-surface" aria-label={day.name}>
@@ -195,7 +223,7 @@ function DayCard({ day, first, last, write, onMove, onMoveExercise, onAddExercis
         <div className="flex flex-wrap gap-1.5" role="group" aria-label={`${day.name} weekdays`}>
           {WEEKDAYS.map((label, i) => {
             const w = i + 1;
-            const on = day.weekdays.includes(w);
+            const on = weekdays.includes(w);
             return (
               <button key={w} onClick={() => toggleDay(w)} aria-pressed={on}
                 className={cn("min-h-10 min-w-12 rounded-lg border px-2 text-sm font-semibold", on ? "border-brand bg-brand text-brand-fg" : "border-line bg-surface text-muted")}>
@@ -274,18 +302,33 @@ function IconBtn({ label, onClick, disabled, danger, children }: { label: string
   );
 }
 
-function ExercisePicker({ onPick, ...bind }: { open: boolean; onOpenChange: (open: boolean) => void; onClosed: () => void; onPick: (ex: Exercise) => void }) {
+function ExercisePicker({ onPick, onDone, added, dayName, ...bind }: {
+  open: boolean; onOpenChange: (open: boolean) => void; onClosed: () => void;
+  onPick: (ex: Exercise) => void; onDone: () => void; added: ReadonlyMap<string, number>; dayName: string;
+}) {
+  const count = [...added.values()].reduce((n, c) => n + c, 0);
   return (
-    <Sheet {...bind} title="Exercise library">
-      <PickerBody onPick={onPick} />
+    <Sheet
+      {...bind}
+      title="Exercise library"
+      footer={
+        <div className="flex items-center gap-3">
+          <p className="min-w-0 flex-1 truncate text-sm text-muted" role="status">
+            {count ? `${count} added to ${dayName}` : "Tap exercises to add them"}
+          </p>
+          <Button onClick={onDone}>Done</Button>
+        </div>
+      }
+    >
+      <PickerBody onPick={onPick} added={added} />
     </Sheet>
   );
 }
 
 /** Mounted only while the picker is open, so the library loads fresh each time. */
-function PickerBody({ onPick }: { onPick: (ex: Exercise) => void }) {
+function PickerBody({ onPick, added }: { onPick: (ex: Exercise) => void; added: ReadonlyMap<string, number> }) {
   const { data, loading, error, reload } = useLibrary();
   if (loading) return <Spinner />;
   if (error || !data) return <ErrorBox message={error ?? "Couldn't load the library"} onRetry={reload} />;
-  return <ExerciseBrowser lib={data} onPick={onPick} canCreate compact nested onCreated={() => reload({ silent: true })} />;
+  return <ExerciseBrowser lib={data} onPick={onPick} canCreate compact nested added={added} onCreated={() => reload({ silent: true })} />;
 }

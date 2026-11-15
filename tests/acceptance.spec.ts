@@ -139,10 +139,17 @@ test("3. client logs sets, closes the app mid-session, resumes, completes; coach
   await expect(again.getByRole("button", { name: "Mark set 2 not done" })).toBeVisible();
   await expect(again.getByRole("button", { name: "Mark set 3 not done" })).toBeVisible(); // synced on reopen
 
+  // Only 3 sets are done, so finishing asks first.
+  const historyBefore = await cli.evaluate(() => history.length);
   await cli.getByRole("button", { name: "Finish workout" }).click();
+  const confirm = cli.getByRole("dialog", { name: "Finish with sets left?" });
+  await expect(confirm).toContainText(/3 of \d+ sets are checked off/);
+  await confirm.getByRole("button", { name: "Finish anyway" }).click();
   await cli.waitForURL(/\/today/);
   await expect(cli.getByText("Workout saved")).toBeVisible();
   await expect(cli.getByText("Completed", { exact: true })).toBeVisible();
+  // Finishing replaces the session in history, so Back doesn't reopen the finished workout.
+  expect(await cli.evaluate(() => history.length)).toBe(historyBefore);
 
   await coach.goto(`/coach/clients/${clientId}?tab=workouts`);
   const row = coach.getByRole("button", { name: new RegExp(workoutDay) }).first();

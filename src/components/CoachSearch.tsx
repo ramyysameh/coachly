@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Command, useCommandState } from "cmdk";
 import { ClipboardList, Dumbbell, MessageCircle, Plus, Search, User, UserPlus } from "lucide-react";
@@ -23,13 +23,15 @@ type SearchData = { clients: ClientRow[]; plans: PlanRow[]; exercises: ExerciseR
 const lastResults = new Map<string, SearchData>();
 
 /**
- * Coach search palette: a 44px Search button plus Ctrl/⌘K, opening a bottom sheet with a cmdk list of
- * clients, plans, exercises, pages and actions. No motion of its own; the drawer slide is the only animation.
+ * Coach search palette: a cmdk list of clients, plans, exercises, pages and actions. The 44px Search button
+ * opens it in a bottom sheet; Ctrl/⌘K opens it in a centred dialog with no animation at all.
  * AppShell renders one per layout (phone header, desktop sidebar); only the visible one answers ⌘K.
  */
 export default function CoachSearch({ coachId, className }: { coachId: string; className?: string }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  // A tap opens the bottom sheet; Ctrl/⌘K opens a plain dialog with no motion, since a keyboard
+  // shortcut used many times a day should feel instant.
+  const [open, setOpen] = useState<false | "sheet" | "dialog">(false);
   const trigger = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -38,7 +40,7 @@ export default function CoachSearch({ coachId, className }: { coachId: string; c
       // Both AppShell instances listen; only the one whose button is on screen acts.
       if (!trigger.current?.offsetParent) return;
       e.preventDefault();
-      setOpen((o) => !o);
+      setOpen((o) => (o ? false : "dialog"));
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -54,7 +56,7 @@ export default function CoachSearch({ coachId, className }: { coachId: string; c
       <button
         ref={trigger}
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={() => setOpen("sheet")}
         aria-label="Search"
         aria-keyshortcuts="Control+K Meta+K"
         className={cn("flex min-h-11 min-w-11 items-center gap-2 rounded-xl text-muted transition-colors hover:bg-surface-2 hover:text-ink active:bg-surface-2", className)}
@@ -63,11 +65,54 @@ export default function CoachSearch({ coachId, className }: { coachId: string; c
         <span className="hidden flex-1 text-left text-sm md:inline">Search</span>
         <kbd className="hidden rounded-md border border-line px-1.5 font-mono text-[11px] text-muted md:inline">⌘K</kbd>
       </button>
-      <Sheet open={open} onOpenChange={setOpen} title="Search" initialFocus="[cmdk-input]">
+      <Sheet open={open === "sheet"} onOpenChange={(o) => setOpen(o ? "sheet" : false)} title="Search" initialFocus="[cmdk-input]">
         {/* Mounted only while the sheet is open, so data loads on open, not with the app. */}
         <SearchList coachId={coachId} go={go} />
       </Sheet>
+      <InstantDialog open={open === "dialog"} onClose={() => setOpen(false)} label="Search">
+        <SearchList coachId={coachId} go={go} />
+      </InstantDialog>
     </>
+  );
+}
+
+/**
+ * Native modal <dialog> with no enter/exit animation. Escape and a backdrop click close it. It is only in
+ * the DOM while open (so data loads on open, and closed copies never count as dialogs); on open the cmdk
+ * input gets focus, and on close focus goes back to whatever had it before.
+ */
+function InstantDialog({ open, onClose, label, children }: { open: boolean; onClose: () => void; label: string; children: ReactNode }) {
+  if (!open) return null;
+  return <OpenDialog onClose={onClose} label={label}>{children}</OpenDialog>;
+}
+
+function OpenDialog({ onClose, label, children }: { onClose: () => void; label: string; children: ReactNode }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  useLayoutEffect(() => {
+    const d = ref.current;
+    if (!d) return;
+    const opener = document.activeElement;
+    d.showModal();
+    // showModal's own focus pick is browser-dependent; put the caret in the search field explicitly.
+    d.querySelector<HTMLElement>("[cmdk-input]")?.focus();
+    return () => {
+      if (d.open) d.close();
+      if (opener instanceof HTMLElement && opener.isConnected) opener.focus({ preventScroll: true });
+    };
+  }, []);
+  return (
+    <dialog
+      ref={ref}
+      aria-label={label}
+      // `close` is queued as a task, so one from an earlier close() (e.g. React Strict Mode re-running the
+      // effect above) can arrive after the dialog has been reopened. Only a dialog that is shut has closed.
+      onClose={() => !ref.current?.open && onClose()}
+      // The inner panel fills the dialog box, so a click that targets the <dialog> itself hit the backdrop.
+      onClick={(e) => e.target === e.currentTarget && ref.current?.close()}
+      className="m-auto mt-[12vh] w-[min(560px,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-line bg-surface p-0 text-ink shadow-raised backdrop:bg-slate-950/50"
+    >
+      <div className="max-h-[70vh] overflow-y-auto overscroll-contain p-3">{children}</div>
+    </dialog>
   );
 }
 

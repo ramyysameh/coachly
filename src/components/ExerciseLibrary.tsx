@@ -353,9 +353,11 @@ function Check({ checked, onChange, children }: { checked: boolean; onChange: (v
  * Browse the library. Without onPick it's a reference screen; with onPick (plan editor)
  * tapping a row adds it, and the info button opens the exercise card.
  * `nested` is set when the browser itself sits inside a sheet, so its sheets stack on top.
+ * `added` counts what has been picked so far in this picker session, shown as a ✓ on each row.
  */
-export function ExerciseBrowser({ lib, onPick, canCreate, onCreated, compact, nested }: {
+export function ExerciseBrowser({ lib, onPick, canCreate, onCreated, compact, nested, added }: {
   lib: Library; onPick?: (e: Exercise) => void; canCreate?: boolean; onCreated?: () => void; compact?: boolean; nested?: boolean;
+  added?: ReadonlyMap<string, number>;
 }) {
   const [f, setF] = useState<Filters>(NO_FILTERS);
   const detail = useSheet<Exercise>();
@@ -371,7 +373,7 @@ export function ExerciseBrowser({ lib, onPick, canCreate, onCreated, compact, ne
     <div className="space-y-3">
       <FilterBar f={f} setF={setF} hideSearch={!!onPick} />
       {onPick ? (
-        <div className={cn(compact && "-mx-2")}><ExerciseCommand exercises={list} search={f.q} onSearchChange={(q) => setF({ ...f, q })} onPick={onPick} onInfo={openEx} /></div>
+        <div className={cn(compact && "-mx-2")}><ExerciseCommand exercises={list} search={f.q} onSearchChange={(q) => setF({ ...f, q })} onPick={onPick} onInfo={openEx} added={added} /></div>
       ) : (
         <>
           <p className="px-1 text-xs text-muted">{list.length} of {lib.exercises.length} exercises</p>

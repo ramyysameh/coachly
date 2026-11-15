@@ -184,6 +184,8 @@ export default function NutritionDay({ clientId, editable }: { clientId: string;
   );
 }
 
+type Recent = Pick<Meal, "food_name" | "serving" | "calories" | "protein_g" | "carbs_g" | "fat_g">;
+
 function MealForm({ clientId, initial, onSavingChange, onSaved }: { clientId: string; initial: Partial<Meal>; onSavingChange: (saving: boolean) => void; onSaved: () => void }) {
   const supabase = createClient();
   const [f, setF] = useState({
@@ -198,6 +200,39 @@ function MealForm({ clientId, initial, onSavingChange, onSaved }: { clientId: st
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const setSaving = onSavingChange;
+
+  // Recently logged foods, so a meal eaten again is a tap away instead of six fields. New entries only;
+  // offline (or on any error) the list is simply not shown.
+  const recent = useAsync(async (): Promise<Recent[]> => {
+    if (initial.id) return [];
+    const { data, error } = await supabase
+      .from("meal_entries")
+      .select("food_name, serving, calories, protein_g, carbs_g, fat_g")
+      .eq("client_id", clientId)
+      .order("created_at", { ascending: false })
+      .limit(60);
+    if (error || !data) return [];
+    const seen = new Set<string>();
+    return (data as Recent[]).filter((r) => {
+      const k = `${r.food_name.trim().toLowerCase()}|${r.serving.trim().toLowerCase()}`;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    }).slice(0, 6);
+  }, [clientId, initial.id]);
+
+  function applyRecent(r: Recent) {
+    setF((cur) => ({
+      ...cur,
+      food_name: r.food_name,
+      serving: r.serving,
+      calories: String(Number(r.calories)),
+      protein_g: String(Number(r.protein_g)),
+      carbs_g: String(Number(r.carbs_g)),
+      fat_g: String(Number(r.fat_g)),
+    }));
+    setErrors({});
+  }
 
   const num = (s: string) => (s.trim() === "" ? 0 : Number(s.replace(",", ".")));
 
@@ -242,6 +277,25 @@ function MealForm({ clientId, initial, onSavingChange, onSaved }: { clientId: st
   return (
     <form id="meal-form" onSubmit={save} noValidate className="space-y-3">
       {error && <ErrorBox message={error} />}
+      {!!recent.data?.length && (
+        <div>
+          <p className="mb-1.5 text-sm font-medium text-ink">Recent</p>
+          {/* Not labelled with the word "food": the form's own fields are found by that label. */}
+          <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1" role="group" aria-label="Recently logged">
+            {recent.data.map((r) => (
+              <button
+                key={`${r.food_name}|${r.serving}`}
+                type="button"
+                onClick={() => applyRecent(r)}
+                className="min-h-11 shrink-0 rounded-xl border border-line bg-surface px-3 py-2 text-left text-sm shadow-card transition-transform duration-150 active:scale-[0.97]"
+              >
+                <span className="block max-w-[12rem] truncate font-medium">{r.food_name}</span>
+                <span className="block text-xs text-muted tabular-nums">{r.serving} · {Math.round(Number(r.calories))} kcal</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <Field label="Meal">
         <Select value={f.meal} onChange={set("meal")}>
           {MEALS.map((m) => <option key={m} value={m} className="capitalize">{m[0].toUpperCase() + m.slice(1)}</option>)}

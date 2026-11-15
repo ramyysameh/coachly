@@ -65,6 +65,22 @@ export function fmtRest(sec: number) {
   return s ? `${m}m ${s}s` : `${m} min`;
 }
 
+/**
+ * A post-login redirect target that can only stay on this site. A plain `startsWith("/")` check lets
+ * "//evil.com" and "/\evil.com" through (browsers read both as another host), so resolve it against a
+ * placeholder origin and keep it only if the origin didn't change.
+ */
+export function safeRedirect(next: string | null | undefined, fallback = "/"): string {
+  if (!next || !next.startsWith("/")) return fallback;
+  try {
+    const base = "http://app.invalid";
+    const url = new URL(next, base);
+    return url.origin === base ? url.pathname + url.search + url.hash : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 export function cn(...c: (string | false | null | undefined)[]) {
   return c.filter(Boolean).join(" ");
 }
