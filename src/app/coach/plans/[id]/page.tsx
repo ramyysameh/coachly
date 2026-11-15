@@ -114,7 +114,7 @@ export default function PlanBuilderPage({ params }: { params: Promise<{ id: stri
       if (!day.plan_exercises.length) return { error: null };
       return await supabase.from("plan_exercises").insert(day.plan_exercises.map((pe) => ({
         plan_day_id: nd.id, exercise_id: pe.exercise_id, position: pe.position, target_sets: pe.target_sets, rep_min: pe.rep_min,
-        rep_max: pe.rep_max, rest_seconds: pe.rest_seconds, notes: pe.notes, target_rpe: pe.target_rpe, superset_group: pe.superset_group,
+        rep_max: pe.rep_max, rest_seconds: pe.rest_seconds, notes: pe.notes, superset_group: pe.superset_group,
       })));
     });
   }
@@ -352,19 +352,6 @@ function ExerciseRow({ pe, first, last, write, onMove, onSwap, superset, linkedT
     if (v !== pe[field]) write(() => supabase.from("plan_exercises").update({ [field]: v }).eq("id", pe.id));
   }
 
-  /** Optional target RPE: empty clears it, otherwise 5–10 in half steps. */
-  function saveRpe(raw: string) {
-    const t = raw.trim().replace(",", ".");
-    const v = t === "" ? null : Number(t);
-    if (v !== null && (!Number.isFinite(v) || v < 5 || v > 10 || v * 2 !== Math.floor(v * 2))) {
-      return setErr("Target RPE is 5 to 10 in half steps (e.g. 8 or 8.5), or leave it empty.");
-    }
-    setErr(null);
-    if (v !== (pe.target_rpe === null ? null : Number(pe.target_rpe))) {
-      write(() => supabase.from("plan_exercises").update({ target_rpe: v }).eq("id", pe.id));
-    }
-  }
-
   async function removeExercise() {
     if (!(await write(() => supabase.from("plan_exercises").delete().eq("id", pe.id)))) return;
     // The joined exercise is not a plan_exercises column.
@@ -389,7 +376,7 @@ function ExerciseRow({ pe, first, last, write, onMove, onSwap, superset, linkedT
         <IconBtn label="Remove exercise" danger onClick={removeExercise}><X className="size-4" /></IconBtn>
       </div>
       {/* Keyed on the exercise, not the values: a save reloads the plan, and remounting here would drop focus mid-Tab. */}
-      <div className="mt-2 grid grid-cols-[1fr_2fr_1fr_1fr] gap-2" key={`${pe.id}-${pe.exercise_id}`}>
+      <div className="mt-2 grid grid-cols-[1fr_2fr_1fr] gap-2" key={`${pe.id}-${pe.exercise_id}`}>
         <Field label="Sets"><NumInput defaultValue={pe.target_sets} onBlur={(e) => saveNum("target_sets", e.target.value, 1, 20)} /></Field>
         <div>
           <span className="mb-1.5 block text-sm font-medium text-ink">{timed ? "Time (s)" : "Reps"}</span>
@@ -399,9 +386,7 @@ function ExerciseRow({ pe, first, last, write, onMove, onSwap, superset, linkedT
             <NumInput aria-label={timed ? "Max seconds" : "Max reps"} defaultValue={pe.rep_max} onBlur={(e) => saveNum("rep_max", e.target.value, 1, repMax)} />
           </div>
         </div>
-        <Field label="Rest (s)"><NumInput defaultValue={pe.rest_seconds} onBlur={(e) => saveNum("rest_seconds", e.target.value, 0, 1800)} /></Field>
-        <Field label="RPE"><NumInput decimal placeholder="–" defaultValue={pe.target_rpe ?? ""} onBlur={(e) => saveRpe(e.target.value)} /></Field>
-      </div>
+        <Field label="Rest (s)"><NumInput defaultValue={pe.rest_seconds} onBlur={(e) => saveNum("rest_seconds", e.target.value, 0, 1800)} /></Field>      </div>
       <Input className="mt-2 text-sm" placeholder="Notes for the client (optional)" defaultValue={pe.notes ?? ""} aria-label={`${pe.exercises.name} notes`}
         onBlur={(e) => e.target.value !== (pe.notes ?? "") && write(() => supabase.from("plan_exercises").update({ notes: e.target.value || null }).eq("id", pe.id))} />
       {err && <p className="mt-1 text-xs font-medium text-danger" role="alert">{err}</p>}
