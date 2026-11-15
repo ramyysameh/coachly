@@ -16,6 +16,7 @@ import { SESSION_SELECT, sortSession, type Exercise, type Session, type SessionE
 import { useProfile } from "@/components/AppShell";
 import { Badge, Button, ErrorBox, Field, NumInput, Spinner, Textarea } from "@/components/ui";
 import { ConfirmSheet, Sheet } from "@/components/Sheet";
+import { SwipeToDelete } from "@/components/SwipeToDelete";
 import { notify } from "@/lib/notify";
 import { isUnreachable } from "@/lib/supabase/authState";
 import { checkLivePr, liveRecords, PR_LABEL, type LiveRecord, type SetRow as HistoryRow } from "@/lib/analytics";
@@ -343,21 +344,29 @@ function ExerciseCard({
     onSetsReplaced([...ex.session_sets, data as SessionSet]);
   }
 
-  async function removeSet() {
-    const last = ex.session_sets.at(-1);
-    if (!last) return;
+  /** Removes the given set (the last one by default). Resolves true once it's deleted. */
+  async function removeSet(target?: SessionSet): Promise<boolean> {
+    const last = target ?? ex.session_sets.at(-1);
+    if (!last || ex.session_sets.length <= 1) return false;
+    // The label the row showed (W, 2, 3D…), which can differ from set_number once sets were removed.
+    const shown = setLabels(ex.session_sets)[ex.session_sets.indexOf(last)];
     setBusy(true);
     const { error } = await supabase.from("session_sets").delete().eq("id", last.id);
     setBusy(false);
-    if (error) return notify.error(setRowError(error));
-    onSetsReplaced(ex.session_sets.slice(0, -1));
+    if (error) {
+      notify.error(setRowError(error));
+      return false;
+    }
+    // Labels and last-time matching go by order, not set_number, so a gap left by a middle set is harmless.
+    onSetsReplaced(ex.session_sets.filter((x) => x.id !== last.id));
     // The removed set may hold logged reps and weight, so it can be put back exactly as it was.
     const row = { id: last.id, session_exercise_id: last.session_exercise_id, set_number: last.set_number, reps: last.reps, weight_kg: last.weight_kg, completed: last.completed, set_type: last.set_type, rpe: last.rpe };
-    notify.undo(`Set ${last.set_number} removed`, async () => {
+    notify.undo(`Set ${shown} removed`, async () => {
       const { data, error } = await createClient().from("session_sets").insert(row).select().single();
       if (error) return notify.error(setRowError(error));
       onSetRestored(data as SessionSet);
     });
+    return true;
   }
 
   async function saveNotes() {
@@ -407,8 +416,8 @@ function ExerciseCard({
           <span className="sr-only">Done</span>
         </div>
         {ex.session_sets.map((s, i) => (
+          <SwipeToDelete key={s.id} enabled={ex.session_sets.length > 1} onDelete={() => removeSet(s)}>
           <SetRow
-            key={s.id}
             sessionId={ex.session_id}
             set={s}
             label={labels[i]}
@@ -424,12 +433,13 @@ function ExerciseCard({
             onChange={(patch) => onSetChange(s.id, patch)}
             onCompleted={onCompleted}
           />
+          </SwipeToDelete>
         ))}
       </div>
 
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-line px-3 py-2">
         <Button variant="ghost" size="sm" onClick={addSet} disabled={busy} aria-label="Add set"><Plus className="size-4" aria-hidden /> Set</Button>
-        <Button variant="ghost" size="sm" onClick={removeSet} disabled={busy || ex.session_sets.length <= 1} aria-label="Remove last set"><Minus className="size-4" aria-hidden /> Set</Button>
+        <Button variant="ghost" size="sm" onClick={() => void removeSet()} disabled={busy || ex.session_sets.length <= 1} aria-label="Remove last set"><Minus className="size-4" aria-hidden /> Set</Button>
         {!ex.is_bodyweight && (
           <div className="ml-auto flex items-center gap-1">
             {!hasWarmups && (

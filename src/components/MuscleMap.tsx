@@ -84,7 +84,7 @@ function View({ label, shapes, tones, onSelect, selected }: { label: string; sha
             return (
               <g
                 key={m}
-                className={cn(tone ? TONE_CLASS[tone] : "fill-line", onSelect && "cursor-pointer hover:opacity-80", selected === m && "stroke-ink")}
+                className={cn(tone ? TONE_CLASS[tone] : "fill-line", onSelect && "cursor-pointer transition-opacity duration-100 hover:opacity-80 active:opacity-60", selected === m && "stroke-ink")}
                 strokeWidth={selected === m ? 1.4 : undefined}
                 onClick={onSelect ? () => onSelect(m) : undefined}
               >

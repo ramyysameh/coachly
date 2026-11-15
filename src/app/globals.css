@@ -49,6 +49,8 @@
 
   --shadow-card: 0 1px 2px rgb(15 23 42 / 0.04), 0 1px 1px rgb(15 23 42 / 0.03);
   --shadow-raised: 0 8px 24px -12px rgb(15 118 110 / 0.35);
+  /* Floating layers (toasts): bigger, softer lift than a card, so they read as above the page. */
+  --shadow-float: 0 12px 32px -12px rgb(15 23 42 / 0.28), 0 2px 6px -2px rgb(15 23 42 / 0.08);
 
   --ease-out-quart: cubic-bezier(0.16, 1, 0.3, 1);
 
@@ -82,6 +84,7 @@
 
     --shadow-card: 0 0 0 transparent;
     --shadow-raised: 0 8px 24px -12px rgb(45 212 191 / 0.25);
+    --shadow-float: 0 16px 40px -12px rgb(0 0 0 / 0.7), 0 0 0 1px rgb(255 255 255 / 0.04);
   }
 }
 
@@ -154,6 +157,33 @@ body {
 }
 
 /*
+ * Scroll edge: the bars' hairlines only appear where content actually sits under them. The header's
+ * line fades in over the first 24px of scroll; the tab bar's fades out over the last 24px, when the
+ * page end clears it. A page too short to scroll shows neither. Browsers without scroll-driven
+ * animations keep the plain always-on hairline.
+ */
+@supports (animation-timeline: scroll()) {
+  .chrome-top {
+    border-bottom-color: transparent;
+    animation: edge-in linear both;
+    animation-timeline: scroll(root block);
+    animation-range: 0 24px;
+  }
+  .chrome-bottom {
+    border-top-color: transparent;
+    animation: edge-out linear both;
+    animation-timeline: scroll(root block);
+    animation-range: calc(100% - 24px) 100%;
+  }
+}
+@keyframes edge-in {
+  to { border-bottom-color: color-mix(in oklab, var(--color-line) 70%, transparent); }
+}
+@keyframes edge-out {
+  from { border-top-color: color-mix(in oklab, var(--color-line) 70%, transparent); }
+}
+
+/*
  * Translucent chrome (the phone header and tab bar, marked .chrome) turns solid for people who
  * asked for less transparency or more contrast. Unlayered, so it beats the bg and backdrop utilities.
  */
@@ -172,6 +202,7 @@ body {
     --color-muted: #3f4c5e;
   }
   .chrome {
+    animation: none;
     background-color: var(--color-surface);
     border-color: var(--color-line);
     -webkit-backdrop-filter: none;
