@@ -128,6 +128,63 @@ export function prEvents(sets: SetRow[]): PrEvent[] {
   return events;
 }
 
+// ───────────────────────── Live PRs while logging ─────────────────────────
+/** Best weight / reps / est. 1RM so far for one exercise variant, plus whether any earlier session exists. */
+export type LiveRecord = Record<PrKind, number> & { weighted: boolean; hasHistory: boolean };
+export type LiveSet = { exercise_id: string | null; exercise_name: string; weight_kg: number | null; reps: number | null };
+
+const liveKey = (s: Pick<LiveSet, "exercise_id" | "exercise_name">) => (s.exercise_id ? `e:${s.exercise_id}` : `n:${s.exercise_name}`);
+
+function fold(rec: LiveRecord, s: LiveSet) {
+  const w = Number(s.weight_kg ?? 0), r = Number(s.reps ?? 0), est = e1rm(s.weight_kg, s.reps) ?? 0;
+  if (w > 0) rec.weighted = true;
+  rec.weight = Math.max(rec.weight, w);
+  rec.reps = Math.max(rec.reps, r);
+  rec.e1rm = Math.max(rec.e1rm, est);
+}
+
+/**
+ * Records to beat during a live session: built from earlier sessions (`history` must exclude
+ * warm-ups, as completed_sets does), then raised by sets already ticked off in this session so
+ * reopening a workout doesn't announce the same PR twice.
+ */
+export function liveRecords(history: SetRow[], sessionId: string, sessionDate: string, current: LiveSet[]): Map<string, LiveRecord> {
+  const map = new Map<string, LiveRecord>();
+  const get = (s: LiveSet) => {
+    const k = liveKey(s);
+    if (!map.has(k)) map.set(k, { weight: 0, reps: 0, e1rm: 0, weighted: false, hasHistory: false });
+    return map.get(k)!;
+  };
+  for (const s of history) {
+    if (s.session_id === sessionId || s.performed_on > sessionDate) continue;
+    const rec = get(s);
+    rec.hasHistory = true;
+    fold(rec, s);
+  }
+  current.forEach((s) => fold(get(s), s));
+  return map;
+}
+
+/**
+ * Checks a just-completed working set against the records and raises them. Same rules as
+ * prEvents(): the first time an exercise is logged sets the baseline (no PR), and "most reps"
+ * only counts for exercises never done with added weight.
+ */
+export function checkLivePr(records: Map<string, LiveRecord>, s: LiveSet): PrKind[] {
+  const k = liveKey(s);
+  const rec = records.get(k) ?? { weight: 0, reps: 0, e1rm: 0, weighted: false, hasHistory: false };
+  records.set(k, rec);
+  const w = Number(s.weight_kg ?? 0), r = Number(s.reps ?? 0), est = e1rm(s.weight_kg, s.reps) ?? 0;
+  const beat: PrKind[] = [];
+  if (rec.hasHistory) {
+    if (w > 0 && w > rec.weight + 1e-9) beat.push("weight");
+    if (est > 0 && est > rec.e1rm + 1e-9) beat.push("e1rm");
+    if (r > 0 && r > rec.reps && !rec.weighted && w <= 0) beat.push("reps");
+  }
+  fold(rec, s);
+  return beat;
+}
+
 export type CurrentRecord = { key: string; label: string; weight: number | null; weightReps: number | null; e1rm: number | null; reps: number | null; lastPr: string | null; bodyweight: boolean };
 
 /** Current best weight / est. 1RM / reps for each variant. */

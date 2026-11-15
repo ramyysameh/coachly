@@ -1,5 +1,5 @@
 "use client";
-import { use, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { use, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import NumberFlow from "@number-flow/react";
 import { useRouter } from "next/navigation";
@@ -7,16 +7,21 @@ import { Check, ChevronLeft, Minus, Plus, Timer, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { playChime, primeChime } from "@/lib/chime";
 import { useAsync, must } from "@/lib/useAsync";
-import { SESSION_SELECT, sortSession, type Session, type SessionExercise, type SessionSet } from "@/lib/data";
+import { SESSION_SELECT, sortSession, type Session, type SessionExercise, type SessionSet, type SetType } from "@/lib/data";
 import { useProfile } from "@/components/AppShell";
 import { Badge, Button, ErrorBox, Spinner, Textarea } from "@/components/ui";
-import { ConfirmSheet } from "@/components/Sheet";
+import { ConfirmSheet, Sheet } from "@/components/Sheet";
 import { notify } from "@/lib/notify";
 import { isUnreachable } from "@/lib/supabase/authState";
-import { cn, errMsg, fmtDate, fmtRest, fromKg, toKg, type Unit } from "@/lib/utils";
+import { checkLivePr, liveRecords, PR_LABEL, type LiveRecord, type SetRow as HistoryRow } from "@/lib/analytics";
+import { isWorkingSet, SET_TYPE_TONE, SET_TYPES, setLabels, setTypeInfo } from "@/lib/setTypes";
+import { addDays, cn, errMsg, fmtDate, fmtRest, fromKg, localDate, toKg, type Unit } from "@/lib/utils";
 import { clearSetPatch, flushPendingSets, pendingPatchesFor, queueSetPatch } from "@/lib/pendingSets";
 
 type Prev = { exercise_id: string; performed_on: string; set_number: number; reps: number | null; weight_kg: number | null };
+
+/** A rest countdown starting now. Only called from event handlers. */
+const restFor = (sec: number) => ({ until: Date.now() + sec * 1000, total: sec });
 
 /** Set edits queue offline; adding or removing a set row doesn't, so say that plainly instead of a generic error. */
 function setRowError(error: unknown) {
@@ -35,24 +40,46 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
   const [finishing, setFinishing] = useState(false);
   const [confirmFinish, setConfirmFinish] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Records to beat for live PR toasts. Empty (so no toasts) when the history couldn't load.
+  const records = useRef<Map<string, LiveRecord>>(new Map());
 
   const { data, loading, error: loadError, reload, setData } = useAsync(async () => {
     // send set edits that didn't reach the server last time (app closed / offline)
     await flushPendingSets(supabase, id);
-    const [s, prev] = await Promise.all([
+    const today = localDate();
+    const [s, prev, history] = await Promise.all([
       supabase.from("workout_sessions").select(SESSION_SELECT).eq("id", id).maybeSingle(),
       supabase.rpc("last_performance", { p_session: id }),
+      supabase.rpc("completed_sets", { p_client: profile.id, p_from: addDays(today, -730), p_to: addDays(today, 1) }),
     ]);
     const session = sortSession(must(s) as Session | null);
     if (!session) throw new Error("Workout not found");
     // Show edits made on this phone that haven't reached the server yet.
     const pending = pendingPatchesFor(id);
     session.session_exercises?.forEach((e) => e.session_sets.forEach((st) => Object.assign(st, pending[st.id] ?? {})));
-    // "Last time" numbers are nice to have — offline the workout still opens without them.
+    // "Last time" numbers and PR history are nice to have — offline the workout still opens without them.
     const prevBy: Record<string, Prev[]> = {};
     for (const p of prev.error ? [] : ((prev.data as Prev[]) ?? [])) (prevBy[p.exercise_id] ??= []).push(p);
+    const done = (session.session_exercises ?? []).flatMap((e) =>
+      e.session_sets.filter((x) => x.completed && isWorkingSet(x)).map((x) => ({ ...x, exercise_id: e.exercise_id, exercise_name: e.exercise_name })),
+    );
+    records.current = history.error ? new Map() : liveRecords((history.data as HistoryRow[]) ?? [], id, session.scheduled_date, done);
     return { session, prevBy };
   }, [id]);
+
+  function onSetCompleted(ex: SessionExercise, set: Pick<SessionSet, "weight_kg" | "reps" | "set_type">) {
+    if (data?.session.status === "completed") return;
+    if (isWorkingSet(set)) {
+      const kinds = checkLivePr(records.current, { exercise_id: ex.exercise_id, exercise_name: ex.exercise_name, weight_kg: set.weight_kg, reps: set.reps });
+      if (kinds.length) {
+        navigator.vibrate?.([60, 40, 60]);
+        const what = set.weight_kg ? `${fromKg(set.weight_kg, unit)} ${unit} × ${set.reps}` : `${set.reps} reps`;
+        notify.pr(`New PR: ${ex.exercise_name}`, `${kinds.map((k) => PR_LABEL[k]).join(" · ")}. ${what}`);
+      }
+    }
+    // rest 0 means the coach turned the timer off for this exercise
+    if (ex.rest_seconds > 0) setRest(restFor(ex.rest_seconds));
+  }
 
   function patchSession(fn: (s: Session) => void) {
     setData((d) => {
@@ -89,6 +116,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
   const allSets = exercises.flatMap((e) => e.session_sets);
   const doneSets = allSets.filter((s) => s.completed).length;
   const completed = session.status === "completed";
+  const volumeKg = allSets.filter((s) => s.completed && isWorkingSet(s)).reduce((t, s) => t + Number(s.weight_kg ?? 0) * Number(s.reps ?? 0), 0);
 
   return (
     <div className="-mx-1 space-y-3">
@@ -98,12 +126,16 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
         </Link>
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-xl font-semibold">{session.name}</h1>
-          <p className="text-xs text-muted">
-            {fmtDate(session.scheduled_date)} · <NumberFlow value={doneSets} />/{allSets.length} sets
-          </p>
+          <p className="text-xs text-muted">{fmtDate(session.scheduled_date)}</p>
         </div>
         {completed ? <Badge tone="brand">Completed</Badge> : <Badge tone="warn">In progress</Badge>}
       </div>
+
+      <dl className="grid grid-cols-3 gap-2 text-center" aria-label="Workout stats">
+        <Stat label="Duration"><Elapsed from={session.started_at} to={session.completed_at} /></Stat>
+        <Stat label={`Volume (${unit})`}><NumberFlow value={Math.round(fromKg(volumeKg, unit) ?? 0)} /></Stat>
+        <Stat label="Sets"><NumberFlow value={doneSets} />/{allSets.length}</Stat>
+      </dl>
 
       <div className="h-1.5 overflow-hidden rounded-full bg-line" aria-hidden>
         <div
@@ -145,7 +177,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
               if (e) e.session_sets = [...e.session_sets.filter((x) => x.id !== set.id), set].sort((a, b) => a.set_number - b.set_number);
             })
           }
-          onCompleted={() => !completed && setRest({ until: Date.now() + ex.rest_seconds * 1000, total: ex.rest_seconds })}
+          onCompleted={(set) => onSetCompleted(ex, set)}
         />
       ))}
 
@@ -163,7 +195,14 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
 
       {/* Room for the floating rest timer, so it never covers the last sets or the Finish button. */}
       {rest && <div aria-hidden className="h-20" />}
-      {rest && <RestTimer rest={rest} onClose={() => setRest(null)} />}
+      {rest && (
+        <RestTimer
+          rest={rest}
+          onClose={() => setRest(null)}
+          // −15 past zero ends the rest; the bar restarts from the new remaining share
+          onAdjust={(sec) => setRest((r) => (r ? { until: r.until + sec * 1000, total: Math.max(1, r.total + sec) } : r))}
+        />
+      )}
 
       <ConfirmSheet
         open={confirmFinish}
@@ -187,7 +226,7 @@ function ExerciseCard({
   onSetChange: (setId: string, patch: Partial<SessionSet>) => void;
   onSetsReplaced: (sets: SessionSet[]) => void;
   onSetRestored: (set: SessionSet) => void;
-  onCompleted: () => void;
+  onCompleted: (set: Pick<SessionSet, "weight_kg" | "reps" | "set_type">) => void;
 }) {
   const supabase = createClient();
   const [notes, setNotes] = useState(ex.client_notes ?? "");
@@ -216,7 +255,7 @@ function ExerciseCard({
     if (error) return notify.error(setRowError(error));
     onSetsReplaced(ex.session_sets.slice(0, -1));
     // The removed set may hold logged reps and weight, so it can be put back exactly as it was.
-    const row = { id: last.id, session_exercise_id: last.session_exercise_id, set_number: last.set_number, reps: last.reps, weight_kg: last.weight_kg, completed: last.completed };
+    const row = { id: last.id, session_exercise_id: last.session_exercise_id, set_number: last.set_number, reps: last.reps, weight_kg: last.weight_kg, completed: last.completed, set_type: last.set_type };
     notify.undo(`Set ${last.set_number} removed`, async () => {
       const { data, error } = await createClient().from("session_sets").insert(row).select().single();
       if (error) return notify.error(setRowError(error));
@@ -231,6 +270,7 @@ function ExerciseCard({
   }
 
   const lastTime = prev?.length ? prev.map((p) => `${p.weight_kg != null ? fromKg(p.weight_kg, unit) : "BW"}×${p.reps ?? "-"}`).join(", ") : null;
+  const labels = setLabels(ex.session_sets);
 
   return (
     <section className="rounded-2xl border border-line bg-surface" aria-label={ex.exercise_name}>
@@ -238,7 +278,7 @@ function ExerciseCard({
         <div className="flex items-start justify-between gap-2">
           <h2 className="font-semibold leading-tight">{ex.exercise_name}</h2>
           <span className="shrink-0 text-xs font-semibold text-muted">
-            {ex.target_sets} × {ex.rep_min === ex.rep_max ? ex.rep_min : `${ex.rep_min}-${ex.rep_max}`} · rest {fmtRest(ex.rest_seconds)}
+            {ex.target_sets} × {ex.rep_min === ex.rep_max ? ex.rep_min : `${ex.rep_min}-${ex.rep_max}`} · {ex.rest_seconds > 0 ? `rest ${fmtRest(ex.rest_seconds)}` : "no rest timer"}
           </span>
         </div>
         {ex.coach_notes && <p className="mt-0.5 text-xs text-brand-dark">Coach: {ex.coach_notes}</p>}
@@ -260,10 +300,13 @@ function ExerciseCard({
             key={s.id}
             sessionId={ex.session_id}
             set={s}
+            label={labels[i]}
+            exerciseName={ex.exercise_name}
             unit={unit}
             bodyweight={ex.is_bodyweight}
             prev={prevBySet[s.set_number]}
-            above={ex.session_sets[i - 1]}
+            // Suggest from the nearest earlier set of the same kind, so a warm-up never seeds a working set.
+            above={ex.session_sets.slice(0, i).findLast((x) => isWorkingSet(x) === isWorkingSet(s))}
             repTarget={ex.rep_max}
             onChange={(patch) => onSetChange(s.id, patch)}
             onCompleted={onCompleted}
@@ -287,26 +330,30 @@ function parseNum(s: string): number | null {
   return Number.isFinite(v) ? v : null;
 }
 
+type SetPatch = Partial<Pick<SessionSet, "weight_kg" | "reps" | "completed" | "set_type">>;
+
 function SetRow({
-  sessionId, set, unit, bodyweight, prev, above, repTarget, onChange, onCompleted,
+  sessionId, set, label, exerciseName, unit, bodyweight, prev, above, repTarget, onChange, onCompleted,
 }: {
-  sessionId: string; set: SessionSet; unit: Unit; bodyweight: boolean; prev?: Prev; above?: SessionSet; repTarget: number;
-  onChange: (p: Partial<SessionSet>) => void; onCompleted: () => void;
+  sessionId: string; set: SessionSet; label: string; exerciseName: string; unit: Unit; bodyweight: boolean; prev?: Prev; above?: SessionSet; repTarget: number;
+  onChange: (p: Partial<SessionSet>) => void; onCompleted: (set: Pick<SessionSet, "weight_kg" | "reps" | "set_type">) => void;
 }) {
   const supabase = createClient();
   const [weight, setWeight] = useState(set.weight_kg != null ? String(fromKg(set.weight_kg, unit)) : "");
   const [reps, setReps] = useState(set.reps != null ? String(set.reps) : "");
   const [state, setState] = useState<"idle" | "saving" | "error">("idle");
   const [err, setErr] = useState<string | null>(null);
-  const lastSaved = useRef({ weight_kg: set.weight_kg, reps: set.reps, completed: set.completed });
+  const [typeOpen, setTypeOpen] = useState(false);
+  const lastSaved = useRef({ weight_kg: set.weight_kg, reps: set.reps, completed: set.completed, set_type: set.set_type });
 
   // Suggested values: the set above in this session, else the same set last time.
   const suggestW = above?.weight_kg ?? prev?.weight_kg ?? null;
   const suggestR = above?.reps ?? prev?.reps ?? null;
 
-  async function save(patch: Partial<Pick<SessionSet, "weight_kg" | "reps" | "completed">>) {
+  async function save(patch: SetPatch) {
     const next = { ...lastSaved.current, ...patch };
-    if (next.weight_kg === lastSaved.current.weight_kg && next.reps === lastSaved.current.reps && next.completed === lastSaved.current.completed) return true;
+    const cur = lastSaved.current;
+    if (next.weight_kg === cur.weight_kg && next.reps === cur.reps && next.completed === cur.completed && next.set_type === cur.set_type) return true;
     setState("saving");
     onChange(patch);
     queueSetPatch(set.id, sessionId, patch);
@@ -349,18 +396,34 @@ function SetRow({
       return;
     }
     const ok = await save({ weight_kg, reps: r, completed: true });
-    if (ok) onCompleted();
+    if (ok) onCompleted({ weight_kg, reps: r, set_type: set.set_type });
+  }
+
+  function chooseType(t: SetType) {
+    setTypeOpen(false);
+    void save({ set_type: t });
   }
 
   const prevLabel = prev ? `${prev.weight_kg != null ? fromKg(prev.weight_kg, unit) : "BW"}×${prev.reps ?? "-"}` : "-";
+  const info = setTypeInfo(set.set_type);
 
   return (
     <div className={cn("rounded-xl", set.completed && "bg-brand/5")}>
       <div className="grid grid-cols-[2rem_4.5rem_1fr_1fr_3.25rem] items-center gap-1.5 px-1 py-1">
-        <span className="text-center font-semibold text-muted">{set.set_number}</span>
+        <button
+          type="button"
+          onClick={() => setTypeOpen(true)}
+          aria-label={`Set ${label}: ${info.label}. Change set type`}
+          className={cn(
+            "flex h-12 items-center justify-center rounded-lg font-semibold tabular-nums transition-colors hover:bg-line/60 active:scale-95",
+            SET_TYPE_TONE[set.set_type],
+          )}
+        >
+          {label}
+        </button>
         <span className="truncate text-xs tabular-nums text-muted" title="Last time">{prevLabel}</span>
         <input
-          aria-label={`Set ${set.set_number} weight in ${unit}`}
+          aria-label={`Set ${label} weight in ${unit}`}
           inputMode="decimal"
           autoComplete="off"
           enterKeyHint="next"
@@ -371,7 +434,7 @@ function SetRow({
           onBlur={() => save({ weight_kg: valueFromInputs().weight_kg })}
         />
         <input
-          aria-label={`Set ${set.set_number} reps`}
+          aria-label={`Set ${label} reps`}
           inputMode="numeric"
           autoComplete="off"
           enterKeyHint="done"
@@ -383,7 +446,7 @@ function SetRow({
         />
         <button
           onClick={toggle}
-          aria-label={set.completed ? `Mark set ${set.set_number} not done` : `Complete set ${set.set_number}`}
+          aria-label={set.completed ? `Mark set ${label} not done` : `Complete set ${label}`}
           aria-pressed={set.completed}
           aria-busy={state === "saving"}
           className={cn(
@@ -399,10 +462,40 @@ function SetRow({
         <p className="flex items-center gap-2 px-2 pb-1 text-xs font-medium text-danger" role="alert">
           {err ?? "Couldn't save"}
           {err !== "Enter reps first" && (
-            <button className="underline" onClick={() => save(valueFromInputs())}>Retry</button>
+            <button className="underline" onClick={() => save({ ...valueFromInputs(), set_type: set.set_type })}>Retry</button>
           )}
         </p>
       )}
+      <Sheet open={typeOpen} onOpenChange={setTypeOpen} title={`Set ${label} · ${exerciseName}`}>
+        <ul className="space-y-1.5" role="radiogroup" aria-label="Set type">
+          {SET_TYPES.map((t) => {
+            const on = t.type === set.set_type;
+            return (
+              <li key={t.type}>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={on}
+                  onClick={() => chooseType(t.type)}
+                  className={cn(
+                    "flex min-h-14 w-full items-center gap-3 rounded-xl border px-3 py-2 text-left transition-colors",
+                    on ? "border-brand bg-brand/8" : "border-line hover:bg-line/40",
+                  )}
+                >
+                  <span className={cn("flex size-8 shrink-0 items-center justify-center rounded-lg bg-paper font-semibold", SET_TYPE_TONE[t.type])} aria-hidden>
+                    {t.short || "#"}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-medium">{t.label}</span>
+                    <span className="block text-xs text-muted">{t.hint}</span>
+                  </span>
+                  {on && <Check className="size-5 shrink-0 text-brand" aria-hidden />}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </Sheet>
     </div>
   );
 }
@@ -426,7 +519,33 @@ function SessionNotes({ session }: { session: Session }) {
   );
 }
 
-function RestTimer({ rest, onClose }: { rest: { until: number; total: number }; onClose: () => void }) {
+const timerBtn =
+  "flex h-11 min-w-11 items-center justify-center rounded-xl bg-paper/10 px-2 font-mono text-sm font-semibold tabular-nums transition-colors hover:bg-paper/20 active:scale-95 disabled:opacity-40";
+
+function Stat({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="rounded-xl border border-line bg-surface px-2 py-1.5">
+      <dt className="text-[11px] font-semibold uppercase tracking-wide text-muted">{label}</dt>
+      <dd className="font-mono text-lg font-semibold tabular-nums">{children}</dd>
+    </div>
+  );
+}
+
+/** Live workout clock. Stops at completed_at. Shows a dash for implausible spans (a session left open for days). */
+function Elapsed({ from, to }: { from: string; to: string | null }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (to) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [to]);
+  const sec = Math.floor(((to ? new Date(to).getTime() : now) - new Date(from).getTime()) / 1000);
+  if (!(sec >= 0) || sec > 12 * 3600) return <>—</>;
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+  return <>{h ? `${h}:${String(m).padStart(2, "0")}` : m}:{String(s).padStart(2, "0")}</>;
+}
+
+function RestTimer({ rest, onClose, onAdjust }: { rest: { until: number; total: number }; onClose: () => void; onAdjust: (sec: number) => void }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 250);
@@ -458,11 +577,13 @@ function RestTimer({ rest, onClose }: { rest: { until: number; total: number }; 
     <div className="fixed inset-x-3 z-40 flex animate-enter items-center gap-3 overflow-hidden rounded-2xl bg-ink p-3 pl-4 text-paper shadow-[0_16px_40px_-12px_rgb(2_6_23/0.5)] md:left-auto md:right-8 md:w-80"
       style={{ bottom: "calc(4.75rem + env(safe-area-inset-bottom))" }} role="timer" aria-live="polite">
       <Timer className="size-6 shrink-0" aria-hidden />
-      <div className="flex-1">
+      <div className="min-w-0 flex-1">
         <p className="text-xs text-paper/70">{left === 0 ? "Rest done. Next set!" : "Rest"}</p>
         <p className="font-mono text-2xl font-semibold tabular-nums">{Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")}</p>
       </div>
-      <button onClick={onClose} className="flex size-11 items-center justify-center rounded-xl bg-paper/10 transition-colors hover:bg-paper/20 active:scale-95" aria-label="Dismiss rest timer">
+      <button onClick={() => onAdjust(-15)} disabled={left === 0} className={timerBtn} aria-label="15 seconds less rest">−15</button>
+      <button onClick={() => onAdjust(15)} className={timerBtn} aria-label="15 seconds more rest">+15</button>
+      <button onClick={onClose} className={cn(timerBtn, "w-11 px-0")} aria-label={left === 0 ? "Dismiss rest timer" : "Skip rest"}>
         <X className="size-5" />
       </button>
       {/* remaining-rest bar */}
