@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { Plate, Tilt } from "@/components/Depth";
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { CalendarCheck, CheckCircle2, ChevronRight, Coffee, Play, RotateCw } from "lucide-react";
@@ -125,11 +126,13 @@ function TodayInner() {
           </div>
         </Card>
       ) : (
+        <Tilt className="rounded-2xl">
         <Card className="overflow-hidden p-0">
-          <div className="border-b border-line bg-[linear-gradient(180deg,color-mix(in_oklab,var(--color-brand)_8%,transparent),transparent)] p-5 pb-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-brand-dark">Today&apos;s workout</p>
-            <h2 className="mt-1 text-display font-semibold">{day.name}</h2>
-            <p className="mt-1 text-sm text-muted">
+          <div className="relative overflow-hidden border-b border-line bg-[linear-gradient(135deg,color-mix(in_oklab,var(--color-brand)_26%,transparent),transparent_60%)] p-5 pb-4">
+            <Plate size={150} depth={18} pose="rotateX(24deg) rotateY(-38deg) rotateZ(-8deg)" className="pointer-events-none absolute -top-8 -right-10 opacity-90" />
+            <p className="relative text-sm font-semibold text-brand-dark">Today&apos;s workout</p>
+            <h2 className="relative mt-1 max-w-[70%] font-display text-[2.5rem] leading-[0.95] font-bold tracking-tight">{day.name}</h2>
+            <p className="relative mt-2 max-w-[75%] text-sm text-muted">
               {data.plan.name} · {day.plan_exercises.length} exercises, {day.plan_exercises.reduce((n, e) => n + e.target_sets, 0)} sets
             </p>
           </div>
@@ -162,6 +165,7 @@ function TodayInner() {
             )}
           </div>
         </Card>
+        </Tilt>
       )}
 
       <WeekGlance clientId={profile.id} unit={profile.weight_unit} plan={data.plan} />

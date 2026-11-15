@@ -206,7 +206,7 @@ export default function ChatThread({ conversationId, otherName, canSend }: { con
         <button
           type="button"
           onClick={jumpToLatest}
-          className="absolute bottom-3 left-1/2 flex min-h-10 -translate-x-1/2 animate-enter items-center gap-1.5 rounded-full bg-ink px-4 text-sm font-semibold text-paper shadow-raised active:scale-[0.97]"
+          className="absolute bottom-3 left-1/2 flex min-h-10 -translate-x-1/2 animate-enter items-center gap-1.5 rounded-full bg-ink px-4 text-sm font-semibold text-paper shadow-float active:scale-[0.97]"
         >
           <ArrowDown className="size-4" aria-hidden />
           {unseen === 1 ? "New message" : `${unseen} new messages`}

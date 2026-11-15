@@ -59,7 +59,7 @@ export function Sheet({ open, onOpenChange, title, onBack, footer, nested, onClo
       {/* Opened from code only (see above); the button the user tapped keeps focus. */}
       <Drawer.Trigger ref={triggerRef} tabIndex={-1} aria-hidden className="sr-only" />
       <Drawer.Portal>
-        <Drawer.Overlay className="fixed inset-0 z-50 bg-slate-950/50" />
+        <Drawer.Overlay className="fixed inset-0 z-50 bg-black/70 backdrop-blur-[2px]" />
         <Drawer.Content
           ref={contentRef}
           aria-modal="true"

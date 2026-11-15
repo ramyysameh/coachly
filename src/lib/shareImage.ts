@@ -6,7 +6,7 @@ export type ShareCard = {
   stats: { label: string; value: string }[]; comparison: string | null; prs: string[];
 };
 
-const C = { bg: "#0b1118", panel: "#111a24", line: "#233041", ink: "#e6edf3", muted: "#94a3b8", brand: "#2dd4bf" };
+const C = { bg: "#060607", panel: "#121214", line: "#2a2a2f", ink: "#f3f3f4", muted: "#9a9aa3", brand: "#ff535b" };
 const FONT = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
 
 function fit(ctx: CanvasRenderingContext2D, text: string, max: number) {
