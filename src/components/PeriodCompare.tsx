@@ -108,7 +108,7 @@ export default function PeriodCompare({ clientId, unit }: { clientId: string; un
             {sides.map((s, i) => (
               <div key={i} className="min-w-0 space-y-1 rounded-xl bg-surface-2 p-2 text-center">
                 <p className="truncate text-sm font-semibold">{s.p.label}</p>
-                <p className="text-[11px] text-muted">{short(s.p.from)} – {short(s.p.to)} · {s.days} days</p>
+                <p className="text-label text-muted">{short(s.p.from)} – {short(s.p.to)} · {s.days} days</p>
                 <MuscleMap tones={statsTones(s.stats)} view={view} size="md" className="h-52" />
               </div>
             ))}
@@ -149,7 +149,7 @@ function TotalsTable({ a, b, labels, unit }: { a: PeriodTotals; b: PeriodTotals;
       <table className="w-full text-sm">
         <caption className="sr-only">Key totals for both periods</caption>
         <thead>
-          <tr className="text-left text-[11px] tracking-wide text-muted uppercase">
+          <tr className="text-left text-label tracking-wide text-muted uppercase">
             <th className="py-1 pr-2 font-semibold">Total</th>
             <th className="px-2 py-1 font-semibold">{labels[0]}</th>
             <th className="px-2 py-1 font-semibold">{labels[1]}</th>
@@ -180,7 +180,7 @@ function MuscleTable({ a, b, labels, view }: { a: ReturnType<typeof muscleStats>
       <table className="w-full text-sm">
         <caption className="mb-1 text-left text-xs text-muted">Sets per week, {view} muscles</caption>
         <thead>
-          <tr className="text-left text-[11px] tracking-wide text-muted uppercase">
+          <tr className="text-left text-label tracking-wide text-muted uppercase">
             <th className="py-1 pr-2 font-semibold">Muscle</th>
             <th className="px-2 py-1 font-semibold">{labels[0]}</th>
             <th className="px-2 py-1 font-semibold">{labels[1]}</th>

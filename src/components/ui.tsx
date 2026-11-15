@@ -37,7 +37,7 @@ export function Button({
         "inline-flex items-center justify-center gap-2 rounded-xl font-semibold whitespace-nowrap select-none",
         press,
         size === "sm" && "min-h-10 px-3 text-sm",
-        size === "md" && "min-h-12 px-4 text-[15px]",
+        size === "md" && "min-h-12 px-4 text-body",
         size === "lg" && "min-h-14 px-6 text-base",
         variants[variant],
         className,
@@ -51,7 +51,7 @@ export function Button({
 
 export function LinkButton({ href, variant = "primary", className, children }: { href: string; variant?: Variant; className?: string; children: ReactNode }) {
   return (
-    <Link href={href} className={cn("inline-flex min-h-12 items-center justify-center gap-2 rounded-xl px-4 text-[15px] font-semibold whitespace-nowrap active:scale-[0.98]", press, variants[variant], className)}>
+    <Link href={href} className={cn("inline-flex min-h-12 items-center justify-center gap-2 rounded-xl px-4 text-body font-semibold whitespace-nowrap active:scale-[0.98]", press, variants[variant], className)}>
       {children}
     </Link>
   );
@@ -145,7 +145,7 @@ export function PageHeader({ title, subtitle, action }: { title: string; subtitl
   return (
     <div className="mb-5 flex items-end justify-between gap-3">
       <div className="min-w-0">
-        <h1 className="truncate text-[26px] leading-tight font-semibold tracking-tight text-ink md:text-3xl">{title}</h1>
+        <h1 className="truncate text-title font-semibold text-ink md:text-3xl md:leading-tight md:tracking-tight">{title}</h1>
         {subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}
       </div>
       {action}

@@ -300,7 +300,7 @@ function ExerciseRow({ pe, first, last, write, onMove, superset, linkedToNext, o
   const k = `${pe.id}-${pe.target_sets}-${pe.rep_min}-${pe.rep_max}-${pe.rest_seconds}-${pe.target_rpe}`;
   return (
     <li className={cn("p-3", superset && "border-l-4 border-l-brand pl-2")}>
-      {superset && <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-brand-dark">Superset</p>}
+      {superset && <p className="mb-1 text-label font-semibold uppercase tracking-wide text-brand-dark">Superset</p>}
       <div className="flex items-center gap-1">
         <ExerciseThumb ex={pe.exercises} className="mr-2 size-10" />
         <p className="flex-1 font-semibold">

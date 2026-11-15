@@ -63,7 +63,7 @@ export default function CoachSearch({ coachId, className }: { coachId: string; c
       >
         <Search className="size-[18px]" strokeWidth={1.75} aria-hidden />
         <span className="hidden flex-1 text-left text-sm md:inline">Search</span>
-        <kbd className="hidden rounded-md border border-line px-1.5 font-mono text-[11px] text-muted md:inline">⌘K</kbd>
+        <kbd className="hidden rounded-md border border-line px-1.5 font-mono text-label text-muted md:inline">⌘K</kbd>
       </button>
       <Sheet open={open === "sheet"} onOpenChange={(o) => setOpen(o ? "sheet" : false)} title="Search" initialFocus="[cmdk-input]">
         {/* Mounted only while the sheet is open, so data loads on open, not with the app. */}
@@ -225,7 +225,7 @@ function Row({ value, keywords, onSelect, icon, children }: { value: string; key
       value={value}
       keywords={keywords}
       onSelect={onSelect}
-      className="flex min-h-12 cursor-pointer items-center gap-3 rounded-xl px-3 text-[15px] data-[selected=true]:bg-surface-2 [&>svg]:size-[18px] [&>svg]:shrink-0 [&>svg]:text-muted"
+      className="flex min-h-12 cursor-pointer items-center gap-3 rounded-xl px-3 text-body data-[selected=true]:bg-surface-2 [&>svg]:size-[18px] [&>svg]:shrink-0 [&>svg]:text-muted"
     >
       {icon}
       <span className="flex min-w-0 flex-1 items-center gap-2">{children}</span>

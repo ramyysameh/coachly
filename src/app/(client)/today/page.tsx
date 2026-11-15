@@ -128,7 +128,7 @@ function TodayInner() {
         <Card className="overflow-hidden p-0">
           <div className="border-b border-line bg-[linear-gradient(180deg,color-mix(in_oklab,var(--color-brand)_8%,transparent),transparent)] p-5 pb-4">
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-brand-dark">Today&apos;s workout</p>
-            <h2 className="mt-1 text-[28px] leading-tight font-semibold tracking-tight">{day.name}</h2>
+            <h2 className="mt-1 text-display font-semibold">{day.name}</h2>
             <p className="mt-1 text-sm text-muted">
               {data.plan.name} · {day.plan_exercises.length} exercises, {day.plan_exercises.reduce((n, e) => n + e.target_sets, 0)} sets
             </p>

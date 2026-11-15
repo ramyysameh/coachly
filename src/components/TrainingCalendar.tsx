@@ -87,7 +87,7 @@ export default function TrainingCalendar({ clientId, unit }: { clientId: string;
       </div>
 
       <div className="grid grid-cols-7 gap-1 text-center" role="grid" aria-label="Training calendar">
-        {WEEKDAYS.map((w) => <div key={w} className="pb-1 text-[11px] font-semibold tracking-wide text-muted uppercase">{w.slice(0, 1)}<span className="max-sm:hidden">{w.slice(1)}</span></div>)}
+        {WEEKDAYS.map((w) => <div key={w} className="pb-1 text-label font-semibold tracking-wide text-muted uppercase">{w.slice(0, 1)}<span className="max-sm:hidden">{w.slice(1)}</span></div>)}
         {cells.map((date, i) => {
           if (!date) return <div key={`b${i}`} />;
           const day = byDate.get(date)!;
@@ -129,7 +129,7 @@ function Stat({ icon, label, value, sub }: { icon?: React.ReactNode; label: stri
     <div className="rounded-xl bg-surface-2 px-3 py-2">
       <p className="flex items-center gap-1 text-xs font-medium text-muted">{icon}{label}</p>
       <p className="font-mono text-lg font-semibold tabular-nums">{value}</p>
-      <p className="text-[11px] leading-tight text-muted">{sub}</p>
+      <p className="text-label leading-tight text-muted">{sub}</p>
     </div>
   );
 }
@@ -206,7 +206,7 @@ function SessionSummary({ s, unit }: { s: Session; unit: Unit }) {
 function Mini({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-xl bg-surface-2 px-1 py-2">
-      <dt className="text-[11px] text-muted">{label}</dt>
+      <dt className="text-label text-muted">{label}</dt>
       <dd className="text-sm font-semibold tabular-nums">{value}</dd>
     </div>
   );
@@ -233,7 +233,7 @@ export function WeekGlance({ clientId, unit, plan: planProp }: { clientId: strin
           <button key={d.date} onClick={() => sheet.show(d)}
             aria-label={`${fmtDate(d.date, { weekday: "long" })}: ${STATUS_TEXT[d.status]}${d.planned ? ` (${d.planned})` : ""}`}
             className={cn("flex min-h-16 flex-col items-center justify-center gap-1 rounded-xl hover:bg-surface-2", d.date === today && "ring-2 ring-brand")}>
-            <span className="text-[11px] font-semibold text-muted uppercase">{WEEKDAYS[Number(new Date(d.date + "T12:00:00").getDay() + 6) % 7].slice(0, 1)}</span>
+            <span className="text-label font-semibold text-muted uppercase">{WEEKDAYS[Number(new Date(d.date + "T12:00:00").getDay() + 6) % 7].slice(0, 1)}</span>
             <span className="text-sm tabular-nums">{Number(d.date.slice(8))}</span>
             <DayMark day={d} />
           </button>

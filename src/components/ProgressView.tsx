@@ -89,13 +89,13 @@ function Tile({ label, value, format, suffix, sub, delta }: { label: string; val
       <p className="text-xs font-medium text-muted">{label}</p>
       <p className="font-mono text-lg font-semibold tabular-nums">{value === null ? "—" : <NumberFlow value={value} format={format} suffix={suffix} />}</p>
       {delta && (
-        <p className="flex items-center gap-0.5 text-[11px] text-muted">
+        <p className="flex items-center gap-0.5 text-label text-muted">
           {delta.up === true && <ArrowUpRight className="size-3.5 text-brand" aria-hidden />}
           {delta.up === false && <ArrowDownRight className="size-3.5" aria-hidden />}
           {delta.text}
         </p>
       )}
-      {sub && <p className="text-[11px] leading-tight text-muted">{sub}</p>}
+      {sub && <p className="text-label leading-tight text-muted">{sub}</p>}
     </div>
   );
 }
@@ -184,7 +184,7 @@ function Consistency({ data, from, to, today }: { data: Data; from: string; to: 
           <BarsChart data={weeks} valueKey="pct" label="Adherence" max={100} unit="%" reference={80}
             colorFor={(r) => (r.pct !== null && Number(r.pct) < 50 ? "var(--color-warn-solid)" : "var(--color-brand)")} />
         )}
-        <p className="mt-1 text-[11px] text-muted">Dashed line: 80%. Weeks under 50% are amber.</p>
+        <p className="mt-1 text-label text-muted">Dashed line: 80%. Weeks under 50% are amber.</p>
       </div>
     </Card>
   );
@@ -282,7 +282,7 @@ function Records({ data, unit, today }: { data: Data; unit: Unit; today: string 
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-left text-[11px] tracking-wide text-muted uppercase">
+                <tr className="text-left text-label tracking-wide text-muted uppercase">
                   <th className="py-1 pr-2 font-semibold">Exercise</th>
                   <th className="px-2 py-1 font-semibold">Heaviest</th>
                   <th className="px-2 py-1 font-semibold">Est. 1RM</th>
@@ -379,7 +379,7 @@ function MuscleVolume({ clientId, data, today, canEdit, onSaved }: { clientId: s
           </li>
         ))}
       </ul>
-      <p className="text-[11px] text-muted">Shaded band: each muscle&apos;s target range. Grey bars are under target, teal on track, amber above (possible overload).</p>
+      <p className="text-label text-muted">Shaded band: each muscle&apos;s target range. Grey bars are under target, teal on track, amber above (possible overload).</p>
       <MuscleTargetsEditor key={targetsSheet.key} {...targetsSheet.bind} clientId={clientId} targets={targets} onSaved={() => { targetsSheet.close(); onSaved(); }} />
     </Card>
   );
