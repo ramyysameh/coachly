@@ -259,6 +259,19 @@ function ExerciseRow({ pe, first, last, write, onMove }: { pe: PlanExercise; fir
     if (v !== pe[field]) write(() => supabase.from("plan_exercises").update({ [field]: v }).eq("id", pe.id));
   }
 
+  /** Optional target RPE: empty clears it, otherwise 5–10 in half steps. */
+  function saveRpe(raw: string) {
+    const t = raw.trim().replace(",", ".");
+    const v = t === "" ? null : Number(t);
+    if (v !== null && (!Number.isFinite(v) || v < 5 || v > 10 || v * 2 !== Math.floor(v * 2))) {
+      return setErr("Target RPE is 5 to 10 in half steps (e.g. 8 or 8.5), or leave it empty.");
+    }
+    setErr(null);
+    if (v !== (pe.target_rpe === null ? null : Number(pe.target_rpe))) {
+      write(() => supabase.from("plan_exercises").update({ target_rpe: v }).eq("id", pe.id));
+    }
+  }
+
   async function removeExercise() {
     if (!(await write(() => supabase.from("plan_exercises").delete().eq("id", pe.id)))) return;
     // The joined exercise is not a plan_exercises column.
@@ -267,7 +280,7 @@ function ExerciseRow({ pe, first, last, write, onMove }: { pe: PlanExercise; fir
     notify.undo("Exercise removed", async () => { await write(() => supabase.from("plan_exercises").insert(row)); });
   }
 
-  const k = `${pe.id}-${pe.target_sets}-${pe.rep_min}-${pe.rep_max}-${pe.rest_seconds}`;
+  const k = `${pe.id}-${pe.target_sets}-${pe.rep_min}-${pe.rep_max}-${pe.rest_seconds}-${pe.target_rpe}`;
   return (
     <li className="p-3">
       <div className="flex items-center gap-1">
@@ -280,11 +293,12 @@ function ExerciseRow({ pe, first, last, write, onMove }: { pe: PlanExercise; fir
         <IconBtn label="Move exercise down" disabled={last} onClick={() => onMove(1)}><ArrowDown className="size-4" /></IconBtn>
         <IconBtn label="Remove exercise" danger onClick={removeExercise}><X className="size-4" /></IconBtn>
       </div>
-      <div className="mt-2 grid grid-cols-4 gap-2" key={k}>
+      <div className="mt-2 grid grid-cols-5 gap-2" key={k}>
         <Field label="Sets"><NumInput defaultValue={pe.target_sets} onBlur={(e) => saveNum("target_sets", e.target.value, 1, 20)} /></Field>
         <Field label="Min reps"><NumInput defaultValue={pe.rep_min} onBlur={(e) => saveNum("rep_min", e.target.value, 1, 100)} /></Field>
         <Field label="Max reps"><NumInput defaultValue={pe.rep_max} onBlur={(e) => saveNum("rep_max", e.target.value, 1, 100)} /></Field>
         <Field label="Rest (s)"><NumInput defaultValue={pe.rest_seconds} onBlur={(e) => saveNum("rest_seconds", e.target.value, 0, 1800)} /></Field>
+        <Field label="RPE"><NumInput decimal placeholder="–" defaultValue={pe.target_rpe ?? ""} onBlur={(e) => saveRpe(e.target.value)} /></Field>
       </div>
       <Input className="mt-2 text-sm" placeholder="Notes for the client (optional)" defaultValue={pe.notes ?? ""} aria-label={`${pe.exercises.name} notes`}
         onBlur={(e) => e.target.value !== (pe.notes ?? "") && write(() => supabase.from("plan_exercises").update({ notes: e.target.value || null }).eq("id", pe.id))} />

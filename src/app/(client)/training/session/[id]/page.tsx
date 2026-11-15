@@ -3,13 +3,14 @@ import { use, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactN
 import Link from "next/link";
 import NumberFlow from "@number-flow/react";
 import { useRouter } from "next/navigation";
-import { Check, ChevronLeft, Minus, Plus, Timer, X } from "lucide-react";
+import { Calculator, Check, ChevronLeft, Flame, Minus, Plus, Timer, X } from "lucide-react";
+import { BAR_OPTIONS, PLATES, platesPerSide, RPE_CHOICES, warmupRamp } from "@/lib/gymMath";
 import { createClient } from "@/lib/supabase/client";
 import { playChime, primeChime } from "@/lib/chime";
 import { useAsync, must } from "@/lib/useAsync";
 import { SESSION_SELECT, sortSession, type Session, type SessionExercise, type SessionSet, type SetType } from "@/lib/data";
 import { useProfile } from "@/components/AppShell";
-import { Badge, Button, ErrorBox, Spinner, Textarea } from "@/components/ui";
+import { Badge, Button, ErrorBox, Field, NumInput, Spinner, Textarea } from "@/components/ui";
 import { ConfirmSheet, Sheet } from "@/components/Sheet";
 import { notify } from "@/lib/notify";
 import { isUnreachable } from "@/lib/supabase/authState";
@@ -18,7 +19,18 @@ import { isWorkingSet, SET_TYPE_TONE, SET_TYPES, setLabels, setTypeInfo } from "
 import { addDays, cn, errMsg, fmtDate, fmtRest, fromKg, localDate, toKg, type Unit } from "@/lib/utils";
 import { clearSetPatch, flushPendingSets, pendingPatchesFor, queueSetPatch } from "@/lib/pendingSets";
 
-type Prev = { exercise_id: string; performed_on: string; set_number: number; reps: number | null; weight_kg: number | null };
+type Prev = { exercise_id: string; performed_on: string; set_number: number; reps: number | null; weight_kg: number | null; set_type?: SetType };
+
+/**
+ * Lines this session's sets up with last time's: the nth warm-up with the nth warm-up and the
+ * nth working set with the nth working set, so adding warm-ups doesn't shift the comparisons.
+ */
+function matchPrev(sets: SessionSet[], prev: Prev[] | undefined): (Prev | undefined)[] {
+  const warm = (prev ?? []).filter((p) => p.set_type === "warmup");
+  const work = (prev ?? []).filter((p) => p.set_type !== "warmup");
+  let w = 0, k = 0;
+  return sets.map((s) => (isWorkingSet(s) ? work[k++] : warm[w++]));
+}
 
 /** A rest countdown starting now. Only called from event handlers. */
 const restFor = (sec: number) => ({ until: Date.now() + sec * 1000, total: sec });
@@ -231,7 +243,24 @@ function ExerciseCard({
   const supabase = createClient();
   const [notes, setNotes] = useState(ex.client_notes ?? "");
   const [busy, setBusy] = useState(false);
-  const prevBySet = useMemo(() => Object.fromEntries((prev ?? []).map((p) => [p.set_number, p])), [prev]);
+  const [sheet, setSheet] = useState<"warmup" | "plates" | null>(null);
+  const prevMatched = useMemo(() => matchPrev(ex.session_sets, prev), [ex.session_sets, prev]);
+  // The first working set's load (typed, else last time's): what warm-ups ramp to and the plate default.
+  const firstWork = ex.session_sets.findIndex(isWorkingSet);
+  const workingKg = firstWork < 0 ? null : (ex.session_sets[firstWork].weight_kg ?? prevMatched[firstWork]?.weight_kg ?? null);
+  const hasWarmups = ex.session_sets.some((s) => !isWorkingSet(s));
+
+  async function addWarmups(sets: { weight: number; reps: number }[]) {
+    setBusy(true);
+    const { data, error } = await supabase.rpc("add_warmup_sets", {
+      p_session_exercise: ex.id,
+      p_sets: sets.map((s) => ({ weight_kg: Number(toKg(s.weight, unit)!.toFixed(3)), reps: s.reps })),
+    });
+    setBusy(false);
+    if (error) return notify.error(setRowError(error));
+    setSheet(null);
+    onSetsReplaced(data as SessionSet[]);
+  }
 
   async function addSet() {
     setBusy(true);
@@ -255,7 +284,7 @@ function ExerciseCard({
     if (error) return notify.error(setRowError(error));
     onSetsReplaced(ex.session_sets.slice(0, -1));
     // The removed set may hold logged reps and weight, so it can be put back exactly as it was.
-    const row = { id: last.id, session_exercise_id: last.session_exercise_id, set_number: last.set_number, reps: last.reps, weight_kg: last.weight_kg, completed: last.completed, set_type: last.set_type };
+    const row = { id: last.id, session_exercise_id: last.session_exercise_id, set_number: last.set_number, reps: last.reps, weight_kg: last.weight_kg, completed: last.completed, set_type: last.set_type, rpe: last.rpe };
     notify.undo(`Set ${last.set_number} removed`, async () => {
       const { data, error } = await createClient().from("session_sets").insert(row).select().single();
       if (error) return notify.error(setRowError(error));
@@ -269,7 +298,8 @@ function ExerciseCard({
     if (error) notify.error(errMsg(error));
   }
 
-  const lastTime = prev?.length ? prev.map((p) => `${p.weight_kg != null ? fromKg(p.weight_kg, unit) : "BW"}×${p.reps ?? "-"}`).join(", ") : null;
+  const prevWork = (prev ?? []).filter((p) => p.set_type !== "warmup");
+  const lastTime = prevWork.length ? prevWork.map((p) => `${p.weight_kg != null ? fromKg(p.weight_kg, unit) : "BW"}×${p.reps ?? "-"}`).join(", ") : null;
   const labels = setLabels(ex.session_sets);
 
   return (
@@ -278,7 +308,8 @@ function ExerciseCard({
         <div className="flex items-start justify-between gap-2">
           <h2 className="font-semibold leading-tight">{ex.exercise_name}</h2>
           <span className="shrink-0 text-xs font-semibold text-muted">
-            {ex.target_sets} × {ex.rep_min === ex.rep_max ? ex.rep_min : `${ex.rep_min}-${ex.rep_max}`} · {ex.rest_seconds > 0 ? `rest ${fmtRest(ex.rest_seconds)}` : "no rest timer"}
+            {ex.target_sets} × {ex.rep_min === ex.rep_max ? ex.rep_min : `${ex.rep_min}-${ex.rep_max}`}
+            {ex.target_rpe != null && ` @ RPE ${Number(ex.target_rpe)}`} · {ex.rest_seconds > 0 ? `rest ${fmtRest(ex.rest_seconds)}` : "no rest timer"}
           </span>
         </div>
         {ex.coach_notes && <p className="mt-0.5 text-xs text-brand-dark">Coach: {ex.coach_notes}</p>}
@@ -304,7 +335,8 @@ function ExerciseCard({
             exerciseName={ex.exercise_name}
             unit={unit}
             bodyweight={ex.is_bodyweight}
-            prev={prevBySet[s.set_number]}
+            prev={prevMatched[i]}
+            targetRpe={ex.target_rpe}
             // Suggest from the nearest earlier set of the same kind, so a warm-up never seeds a working set.
             above={ex.session_sets.slice(0, i).findLast((x) => isWorkingSet(x) === isWorkingSet(s))}
             repTarget={ex.rep_max}
@@ -314,14 +346,145 @@ function ExerciseCard({
         ))}
       </div>
 
-      <div className="flex items-center gap-2 border-t border-line px-3 py-2">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-line px-3 py-2">
         <Button variant="ghost" size="sm" onClick={addSet} disabled={busy} aria-label="Add set"><Plus className="size-4" aria-hidden /> Set</Button>
         <Button variant="ghost" size="sm" onClick={removeSet} disabled={busy || ex.session_sets.length <= 1} aria-label="Remove last set"><Minus className="size-4" aria-hidden /> Set</Button>
+        {!ex.is_bodyweight && (
+          <div className="ml-auto flex items-center gap-1">
+            {!hasWarmups && (
+              <Button variant="ghost" size="sm" onClick={() => setSheet("warmup")} disabled={busy} aria-label="Add warm-up sets">
+                <Flame className="size-4" aria-hidden /> Warm-up
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" onClick={() => setSheet("plates")} aria-label="Plate calculator" title="Plate calculator" className="px-2.5">
+              <Calculator className="size-4" aria-hidden />
+            </Button>
+          </div>
+        )}
       </div>
+      <WarmupSheet open={sheet === "warmup"} onOpenChange={(o) => setSheet(o ? "warmup" : null)} exerciseName={ex.exercise_name}
+        unit={unit} workingKg={workingKg} busy={busy} onAdd={addWarmups} />
+      <PlateSheet open={sheet === "plates"} onOpenChange={(o) => setSheet(o ? "plates" : null)} exerciseName={ex.exercise_name}
+        unit={unit} defaultKg={workingKg} />
       <div className="px-3 pb-3">
         <Textarea placeholder="Notes for this exercise (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} onBlur={saveNotes} rows={1} className="min-h-11 text-sm" />
       </div>
     </section>
+  );
+}
+
+function WarmupSheet({ open, onOpenChange, exerciseName, unit, workingKg, busy, onAdd }: {
+  open: boolean; onOpenChange: (o: boolean) => void; exerciseName: string; unit: Unit; workingKg: number | null; busy: boolean;
+  onAdd: (sets: { weight: number; reps: number }[]) => void;
+}) {
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange} title={`Warm-up · ${exerciseName}`}>
+      <WarmupBody key={String(workingKg)} unit={unit} workingKg={workingKg} busy={busy} onAdd={onAdd} />
+    </Sheet>
+  );
+}
+
+function WarmupBody({ unit, workingKg, busy, onAdd }: { unit: Unit; workingKg: number | null; busy: boolean; onAdd: (sets: { weight: number; reps: number }[]) => void }) {
+  const [working, setWorking] = useState(workingKg != null ? String(fromKg(workingKg, unit)) : "");
+  const sets = warmupRamp(parseNum(working) ?? 0, unit);
+  return (
+    <div className="space-y-3">
+      <Field label={`Working weight (${unit})`} hint="Warm-ups ramp 40% × 10, 60% × 5, 80% × 3, rounded to the nearest loadable jump.">
+        <NumInput decimal value={working} onChange={(e) => setWorking(e.target.value.replace(/[^0-9.,]/g, ""))} aria-label={`Working weight in ${unit}`} />
+      </Field>
+      {sets.length > 0 ? (
+        <ol className="divide-y divide-line rounded-xl border border-line">
+          {sets.map((s, i) => (
+            <li key={i} className="flex items-center gap-3 px-3 py-2 tabular-nums">
+              <span className="font-semibold text-warn">W</span>
+              <span className="font-mono font-semibold">{s.weight} {unit}</span>
+              <span className="text-muted">× {s.reps}</span>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="text-sm text-muted">Enter the weight of your first working set to see the warm-ups.</p>
+      )}
+      <Button className="w-full" disabled={!sets.length} loading={busy} onClick={() => onAdd(sets)}>
+        Add {sets.length || ""} warm-up set{sets.length === 1 ? "" : "s"}
+      </Button>
+    </div>
+  );
+}
+
+const BAR_KEY = "coachly:bar-weight";
+
+function PlateSheet({ open, onOpenChange, exerciseName, unit, defaultKg }: {
+  open: boolean; onOpenChange: (o: boolean) => void; exerciseName: string; unit: Unit; defaultKg: number | null;
+}) {
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange} title={`Plates · ${exerciseName}`}>
+      <PlateBody key={String(defaultKg)} unit={unit} defaultKg={defaultKg} />
+    </Sheet>
+  );
+}
+
+function PlateBody({ unit, defaultKg }: { unit: Unit; defaultKg: number | null }) {
+  const [total, setTotal] = useState(defaultKg != null ? String(fromKg(defaultKg, unit)) : "");
+  // The bar is a per-phone preference, so it's kept in this browser only.
+  const [bar, setBar] = useState(() => {
+    try {
+      const v = Number(localStorage.getItem(`${BAR_KEY}:${unit}`));
+      return BAR_OPTIONS[unit].includes(v) && localStorage.getItem(`${BAR_KEY}:${unit}`) !== null ? v : BAR_OPTIONS[unit][0];
+    } catch {
+      return BAR_OPTIONS[unit][0];
+    }
+  });
+  function chooseBar(v: number) {
+    setBar(v);
+    try { localStorage.setItem(`${BAR_KEY}:${unit}`, String(v)); } catch { /* storage unavailable: the choice lasts this visit */ }
+  }
+  const t = parseNum(total);
+  const result = t === null ? null : platesPerSide(t, bar, unit);
+  const biggest = PLATES[unit][0];
+  return (
+    <div className="space-y-3">
+      <Field label={`Total weight (${unit})`}>
+        <NumInput decimal value={total} onChange={(e) => setTotal(e.target.value.replace(/[^0-9.,]/g, ""))} aria-label={`Total weight in ${unit}`} />
+      </Field>
+      <div>
+        <p className="mb-1.5 text-sm font-medium">Bar</p>
+        <div className="flex gap-1.5" role="radiogroup" aria-label="Bar weight">
+          {BAR_OPTIONS[unit].map((v) => (
+            <button key={v} type="button" role="radio" aria-checked={bar === v} onClick={() => chooseBar(v)}
+              className={cn("h-10 flex-1 rounded-lg border text-sm font-semibold tabular-nums", bar === v ? "border-brand bg-brand text-brand-fg" : "border-line hover:bg-line/40")}>
+              {v === 0 ? "None" : `${v} ${unit}`}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="rounded-xl border border-line p-3" aria-live="polite">
+        {t === null ? (
+          <p className="text-sm text-muted">Enter a total weight.</p>
+        ) : !result ? (
+          <p className="text-sm text-muted">That&apos;s less than the bar ({bar} {unit}).</p>
+        ) : result.plates.length === 0 ? (
+          <p className="text-sm">Just the bar.</p>
+        ) : (
+          <>
+            <p className="mb-2 text-sm font-medium">Each side</p>
+            <div className="flex items-center gap-1" aria-hidden>
+              <span className="h-2 w-6 rounded-sm bg-muted/50" />
+              {result.plates.map((p, i) => (
+                <span key={i} className="flex w-7 items-center justify-center rounded-md bg-ink font-mono text-[10px] font-semibold text-paper"
+                  style={{ height: `${2 + (p / biggest) * 4}rem` }}>
+                  {p}
+                </span>
+              ))}
+            </div>
+            <p className="mt-2 font-mono text-sm tabular-nums">{result.plates.join(" + ")} {unit}</p>
+          </>
+        )}
+        {result && result.remainder > 0 && (
+          <p className="mt-1 text-xs font-medium text-warn">{result.remainder} {unit} per side can&apos;t be loaded with standard plates.</p>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -330,12 +493,13 @@ function parseNum(s: string): number | null {
   return Number.isFinite(v) ? v : null;
 }
 
-type SetPatch = Partial<Pick<SessionSet, "weight_kg" | "reps" | "completed" | "set_type">>;
+type SetPatch = Partial<Pick<SessionSet, "weight_kg" | "reps" | "completed" | "set_type" | "rpe">>;
 
 function SetRow({
-  sessionId, set, label, exerciseName, unit, bodyweight, prev, above, repTarget, onChange, onCompleted,
+  sessionId, set, label, exerciseName, unit, bodyweight, prev, targetRpe, above, repTarget, onChange, onCompleted,
 }: {
-  sessionId: string; set: SessionSet; label: string; exerciseName: string; unit: Unit; bodyweight: boolean; prev?: Prev; above?: SessionSet; repTarget: number;
+  sessionId: string; set: SessionSet; label: string; exerciseName: string; unit: Unit; bodyweight: boolean; prev?: Prev; targetRpe: number | null;
+  above?: SessionSet; repTarget: number;
   onChange: (p: Partial<SessionSet>) => void; onCompleted: (set: Pick<SessionSet, "weight_kg" | "reps" | "set_type">) => void;
 }) {
   const supabase = createClient();
@@ -344,7 +508,8 @@ function SetRow({
   const [state, setState] = useState<"idle" | "saving" | "error">("idle");
   const [err, setErr] = useState<string | null>(null);
   const [typeOpen, setTypeOpen] = useState(false);
-  const lastSaved = useRef({ weight_kg: set.weight_kg, reps: set.reps, completed: set.completed, set_type: set.set_type });
+  const [rpeOpen, setRpeOpen] = useState(false);
+  const lastSaved = useRef<Required<SetPatch>>({ weight_kg: set.weight_kg, reps: set.reps, completed: set.completed, set_type: set.set_type, rpe: set.rpe });
 
   // Suggested values: the set above in this session, else the same set last time.
   const suggestW = above?.weight_kg ?? prev?.weight_kg ?? null;
@@ -353,7 +518,7 @@ function SetRow({
   async function save(patch: SetPatch) {
     const next = { ...lastSaved.current, ...patch };
     const cur = lastSaved.current;
-    if (next.weight_kg === cur.weight_kg && next.reps === cur.reps && next.completed === cur.completed && next.set_type === cur.set_type) return true;
+    if ((Object.keys(next) as (keyof SetPatch)[]).every((k) => next[k] === cur[k])) return true;
     setState("saving");
     onChange(patch);
     queueSetPatch(set.id, sessionId, patch);
@@ -396,7 +561,17 @@ function SetRow({
       return;
     }
     const ok = await save({ weight_kg, reps: r, completed: true });
-    if (ok) onCompleted({ weight_kg, reps: r, set_type: set.set_type });
+    if (ok) {
+      onCompleted({ weight_kg, reps: r, set_type: set.set_type });
+      // The coach asked for an effort rating on this exercise, so offer the choices straight away.
+      if (targetRpe != null && isWorkingSet(set) && set.rpe == null) setRpeOpen(true);
+    }
+  }
+
+  function chooseRpe(v: number) {
+    setRpeOpen(false);
+    // Tapping the current value again clears it.
+    void save({ rpe: set.rpe != null && Number(set.rpe) === v ? null : v });
   }
 
   function chooseType(t: SetType) {
@@ -458,11 +633,42 @@ function SetRow({
           <Check className="size-6" strokeWidth={3} />
         </button>
       </div>
+      {set.completed && isWorkingSet(set) && (
+        <div className="px-1 pb-1.5">
+          <button
+            type="button"
+            onClick={() => setRpeOpen((o) => !o)}
+            aria-expanded={rpeOpen}
+            aria-label={`Set ${label} effort (RPE): ${set.rpe != null ? Number(set.rpe) : "not rated"}`}
+            className="ml-[2.375rem] rounded-md px-1.5 py-0.5 text-xs text-muted hover:bg-line/60"
+          >
+            RPE <span className="font-mono font-semibold text-ink">{set.rpe != null ? Number(set.rpe) : "–"}</span>
+            {targetRpe != null && <span> · target {Number(targetRpe)}</span>}
+          </button>
+          {rpeOpen && (
+            <div className="mt-1 flex gap-1" role="radiogroup" aria-label={`Set ${label} RPE`}>
+              {RPE_CHOICES.map((v) => {
+                const on = set.rpe != null && Number(set.rpe) === v;
+                return (
+                  <button key={v} type="button" role="radio" aria-checked={on} onClick={() => chooseRpe(v)}
+                    className={cn(
+                      "h-10 min-w-0 flex-1 rounded-lg border font-mono text-sm font-semibold tabular-nums transition-colors active:scale-95",
+                      on ? "border-brand bg-brand text-brand-fg" : "border-line bg-surface hover:bg-line/40",
+                      targetRpe != null && Number(targetRpe) === v && !on && "border-brand/60",
+                    )}>
+                    {v}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
       {state === "error" && (
         <p className="flex items-center gap-2 px-2 pb-1 text-xs font-medium text-danger" role="alert">
           {err ?? "Couldn't save"}
           {err !== "Enter reps first" && (
-            <button className="underline" onClick={() => save({ ...valueFromInputs(), set_type: set.set_type })}>Retry</button>
+            <button className="underline" onClick={() => save({ ...valueFromInputs(), set_type: set.set_type, rpe: set.rpe })}>Retry</button>
           )}
         </p>
       )}

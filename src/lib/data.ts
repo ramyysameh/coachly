@@ -13,7 +13,7 @@ export type Exercise = {
 export const EXERCISE_SELECT = "*, movements(*)";
 export type PlanExercise = {
   id: string; plan_day_id: string; exercise_id: string; position: number;
-  target_sets: number; rep_min: number; rep_max: number; rest_seconds: number; notes: string | null;
+  target_sets: number; rep_min: number; rep_max: number; rest_seconds: number; notes: string | null; target_rpe: number | null;
   exercises: Exercise;
 };
 export type PlanDay = { id: string; plan_id: string; position: number; name: string; weekdays: number[]; plan_exercises: PlanExercise[] };
@@ -24,10 +24,10 @@ export type Plan = {
 };
 
 export type SetType = "normal" | "warmup" | "drop" | "failure";
-export type SessionSet = { id: string; session_exercise_id: string; set_number: number; reps: number | null; weight_kg: number | null; completed: boolean; set_type: SetType };
+export type SessionSet = { id: string; session_exercise_id: string; set_number: number; reps: number | null; weight_kg: number | null; completed: boolean; set_type: SetType; rpe: number | null };
 export type SessionExercise = {
   id: string; session_id: string; exercise_id: string | null; position: number; exercise_name: string; is_bodyweight: boolean;
-  target_sets: number; rep_min: number; rep_max: number; rest_seconds: number; coach_notes: string | null; client_notes: string | null;
+  target_sets: number; rep_min: number; rep_max: number; rest_seconds: number; coach_notes: string | null; client_notes: string | null; target_rpe: number | null;
   session_sets: SessionSet[];
 };
 export type Session = {
