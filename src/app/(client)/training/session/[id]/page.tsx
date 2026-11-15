@@ -7,7 +7,7 @@ import { createPortal } from "react-dom";
 import { ArrowLeftRight, Calculator, Check, ChevronLeft, Flame, Link2, Minus, Plus, Timer, X } from "lucide-react";
 import { fmtDuration, parseDuration, supersetRuns } from "@/lib/workout";
 import { ExerciseBrowser, useLibrary } from "@/components/ExerciseLibrary";
-import { BAR_OPTIONS, PLATES, platesPerSide, RPE_CHOICES, warmupRamp } from "@/lib/gymMath";
+import { BAR_OPTIONS, PLATES, platesPerSide, warmupRamp } from "@/lib/gymMath";
 import { createClient } from "@/lib/supabase/client";
 import { playChime, primeChime } from "@/lib/chime";
 import { prefersReducedMotion, project, releaseVelocity, rubberband, springTo, type SpringState } from "@/lib/motion";
@@ -386,8 +386,7 @@ function ExerciseCard({
         <div className="flex items-start justify-between gap-2">
           <h2 className="min-w-0 font-semibold leading-tight">{ex.exercise_name}</h2>
           <span className="shrink-0 text-xs font-semibold text-muted">
-            {ex.target_sets} × {target}{ex.timed && "s"}
-            {ex.target_rpe != null && ` @ RPE ${Number(ex.target_rpe)}`} · {ex.rest_seconds > 0 ? `rest ${fmtRest(ex.rest_seconds)}` : "no rest timer"}
+            {ex.target_sets} × {target}{ex.timed && "s"} · {ex.rest_seconds > 0 ? `rest ${fmtRest(ex.rest_seconds)}` : "no rest timer"}
           </span>
         </div>
         {(ex.original_exercise_name || ex.added_mid_workout) && (
@@ -425,7 +424,6 @@ function ExerciseCard({
             unit={unit}
             bodyweight={ex.is_bodyweight}
             prev={prevMatched[i]}
-            targetRpe={ex.target_rpe}
             // Suggest from the nearest earlier set of the same kind, so a warm-up never seeds a working set.
             above={ex.session_sets.slice(0, i).findLast((x) => isWorkingSet(x) === isWorkingSet(s))}
             repTarget={ex.rep_max}
@@ -600,15 +598,15 @@ function parseNum(s: string): number | null {
   return Number.isFinite(v) ? v : null;
 }
 
-type SetPatch = Partial<Pick<SessionSet, "weight_kg" | "reps" | "completed" | "set_type" | "rpe" | "duration_s">>;
+type SetPatch = Partial<Pick<SessionSet, "weight_kg" | "reps" | "completed" | "set_type" | "duration_s">>;
 
 /** Duration as typed into the time field: plain seconds under a minute, else m:ss. */
 const durationText = (sec: number | null) => (sec == null ? "" : sec < 60 ? String(sec) : fmtDuration(sec));
 
 function SetRow({
-  sessionId, set, label, exerciseName, unit, bodyweight, prev, targetRpe, above, repTarget, timed, onChange, onCompleted,
+  sessionId, set, label, exerciseName, unit, bodyweight, prev, above, repTarget, timed, onChange, onCompleted,
 }: {
-  sessionId: string; set: SessionSet; label: string; exerciseName: string; unit: Unit; bodyweight: boolean; prev?: Prev; targetRpe: number | null;
+  sessionId: string; set: SessionSet; label: string; exerciseName: string; unit: Unit; bodyweight: boolean; prev?: Prev;
   above?: SessionSet; repTarget: number; timed: boolean;
   onChange: (p: Partial<SessionSet>) => void; onCompleted: (set: Pick<SessionSet, "weight_kg" | "reps" | "set_type">) => void;
 }) {
@@ -619,8 +617,7 @@ function SetRow({
   const [state, setState] = useState<"idle" | "saving" | "error">("idle");
   const [err, setErr] = useState<string | null>(null);
   const [typeOpen, setTypeOpen] = useState(false);
-  const [rpeOpen, setRpeOpen] = useState(false);
-  const lastSaved = useRef<Required<SetPatch>>({ weight_kg: set.weight_kg, reps: set.reps, completed: set.completed, set_type: set.set_type, rpe: set.rpe, duration_s: set.duration_s });
+  const lastSaved = useRef<Required<SetPatch>>({ weight_kg: set.weight_kg, reps: set.reps, completed: set.completed, set_type: set.set_type, duration_s: set.duration_s });
 
   // Suggested values: the set above in this session, else the same set last time.
   const suggestW = above?.weight_kg ?? prev?.weight_kg ?? null;
@@ -683,15 +680,7 @@ function SetRow({
     if (ok) {
       // Timed sets have no reps, so they never count as a rep or weight-for-reps PR.
       onCompleted({ weight_kg, reps: timed ? null : r, set_type: set.set_type });
-      // The coach asked for an effort rating on this exercise, so offer the choices straight away.
-      if (targetRpe != null && isWorkingSet(set) && set.rpe == null) setRpeOpen(true);
     }
-  }
-
-  function chooseRpe(v: number) {
-    setRpeOpen(false);
-    // Tapping the current value again clears it.
-    void save({ rpe: set.rpe != null && Number(set.rpe) === v ? null : v });
   }
 
   function chooseType(t: SetType) {
@@ -754,42 +743,11 @@ function SetRow({
           <Check className="size-6" strokeWidth={3} />
         </button>
       </div>
-      {set.completed && isWorkingSet(set) && (
-        <div className="px-1 pb-1.5">
-          <button
-            type="button"
-            onClick={() => setRpeOpen((o) => !o)}
-            aria-expanded={rpeOpen}
-            aria-label={`Set ${label} effort (RPE): ${set.rpe != null ? Number(set.rpe) : "not rated"}`}
-            className="ml-[2.375rem] rounded-md px-1.5 py-0.5 text-xs text-muted hover:bg-line/60"
-          >
-            RPE <span className="font-mono font-semibold text-ink">{set.rpe != null ? Number(set.rpe) : "–"}</span>
-            {targetRpe != null && <span> · target {Number(targetRpe)}</span>}
-          </button>
-          {rpeOpen && (
-            <div className="mt-1 flex gap-1" role="radiogroup" aria-label={`Set ${label} RPE`}>
-              {RPE_CHOICES.map((v) => {
-                const on = set.rpe != null && Number(set.rpe) === v;
-                return (
-                  <button key={v} type="button" role="radio" aria-checked={on} onClick={() => chooseRpe(v)}
-                    className={cn(
-                      "h-10 min-w-0 flex-1 rounded-lg border font-mono text-sm font-semibold tabular-nums transition-colors active:scale-95",
-                      on ? "border-brand bg-brand text-brand-fg" : "border-line bg-surface hover:bg-line/40",
-                      targetRpe != null && Number(targetRpe) === v && !on && "border-brand/60",
-                    )}>
-                    {v}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
       {state === "error" && (
         <p className="flex items-center gap-2 px-2 pb-1 text-xs font-medium text-danger" role="alert">
           {err ?? "Couldn't save"}
           {err !== FILL_FIRST && (
-            <button className="underline" onClick={() => save({ ...valueFromInputs(), set_type: set.set_type, rpe: set.rpe })}>Retry</button>
+            <button className="underline" onClick={() => save({ ...valueFromInputs(), set_type: set.set_type })}>Retry</button>
           )}
         </p>
       )}

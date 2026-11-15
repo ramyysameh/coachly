@@ -5,9 +5,6 @@ export const LOAD_STEP: Record<Unit, number> = { kg: 2.5, lb: 5 };
 export const BAR_OPTIONS: Record<Unit, number[]> = { kg: [20, 15, 10, 0], lb: [45, 35, 25, 0] };
 export const PLATES: Record<Unit, number[]> = { kg: [25, 20, 15, 10, 5, 2.5, 1.25], lb: [45, 35, 25, 10, 5, 2.5] };
 
-/** RPE choices offered while logging: 10 = nothing left, 9 = one rep left, 8 = two, … */
-export const RPE_CHOICES = [6, 7, 7.5, 8, 8.5, 9, 9.5, 10];
-
 const roundTo = (v: number, step: number) => Math.round(v / step) * step;
 
 /**
