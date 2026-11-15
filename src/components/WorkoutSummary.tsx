@@ -1,5 +1,5 @@
 "use client";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import NumberFlow from "@number-flow/react";
 import { CheckCircle2, Flame, Medal, Share2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -14,6 +14,7 @@ import { notify } from "@/lib/notify";
 import MuscleMap, { type Tone } from "@/components/MuscleMap";
 import { prValue } from "@/components/ProgressView";
 import { Button, Skeleton } from "@/components/ui";
+import { celebrate } from "@/components/Achievement";
 import { addDays, errMsg, fmtDate, fromKg, type Unit } from "@/lib/utils";
 
 /**
@@ -44,6 +45,23 @@ export default function WorkoutSummary({ clientId, sessionId, unit }: { clientId
       perMuscle: setsPerMuscle(rows.filter((r) => r.session_id === sessionId)),
     };
   }, [clientId, sessionId]);
+
+  // One "workout complete" pop-up per finished session (not again on a reload of Today).
+  useEffect(() => {
+    if (!data) return;
+    const key = `celebrated:${sessionId}`;
+    try {
+      if (sessionStorage.getItem(key)) return;
+      sessionStorage.setItem(key, "1");
+    } catch { /* storage blocked: still celebrate */ }
+    const prs = new Set(data.prs.map((e) => e.key)).size;
+    const lines = [
+      data.number ? `Workout #${data.number}` : null,
+      data.streak > 1 ? `${data.streak} planned sessions in a row` : null,
+      prs ? `${prs} personal record${prs > 1 ? "s" : ""}` : null,
+    ].filter((l): l is string => !!l);
+    celebrate({ kind: data.streak >= 3 ? "streak" : "workout", title: "Workout done!", subtitle: data.session.name, lines });
+  }, [data, sessionId]);
 
   if (loading) return <Skeleton className="h-72" />;
   // Not finished (or not found): the plain confirmation is enough.

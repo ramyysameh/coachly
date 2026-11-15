@@ -18,6 +18,7 @@ import { Badge, Button, ErrorBox, Field, NumInput, Spinner, Textarea } from "@/c
 import { ConfirmSheet, Sheet } from "@/components/Sheet";
 import { SwipeToDelete } from "@/components/SwipeToDelete";
 import { notify } from "@/lib/notify";
+import { celebrate } from "@/components/Achievement";
 import { isUnreachable } from "@/lib/supabase/authState";
 import { checkLivePr, liveRecords, PR_LABEL, type LiveRecord, type SetRow as HistoryRow } from "@/lib/analytics";
 import { isWorkingSet, SET_TYPE_TONE, SET_TYPES, setLabels, setTypeInfo } from "@/lib/setTypes";
@@ -104,7 +105,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
       if (kinds.length) {
         navigator.vibrate?.([60, 40, 60]);
         const what = set.weight_kg ? `${fromKg(set.weight_kg, unit)} ${unit} × ${set.reps}` : `${set.reps} reps`;
-        notify.pr(`New PR: ${ex.exercise_name}`, `${kinds.map((k) => PR_LABEL[k]).join(" · ")}. ${what}`);
+        celebrate({ kind: "pr", title: "New PR!", subtitle: ex.exercise_name, lines: [kinds.map((k) => PR_LABEL[k]).join(" · "), what] });
       }
     }
     // rest 0 means the coach turned the timer off for this exercise

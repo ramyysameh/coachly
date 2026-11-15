@@ -14,6 +14,7 @@ import PeriodCompare from "@/components/PeriodCompare";
 import ProgressPhotos from "@/components/ProgressPhotos";
 import ProgressView from "@/components/ProgressView";
 import ProfileHeader from "@/components/ProfileHeader";
+import CoachSummary from "@/components/CoachSummary";
 import TrainingCalendar, { WeekGlance } from "@/components/TrainingCalendar";
 import SessionDetail from "@/components/SessionDetail";
 import { Badge, Button, Card, Empty, ErrorBox, Field, Input, LinkButton, NumInput, Select, Spinner, Tabs, Textarea } from "@/components/ui";
@@ -21,14 +22,16 @@ import { addDays, errMsg, fmtDate, fmtDateTime, localDate, WEEKDAYS, type Unit }
 import { notify } from "@/lib/notify";
 
 type Client = { id: string; full_name: string; goal: string | null; weight_unit: Unit };
-type Tab = "overview" | "plan" | "workouts" | "nutrition" | "progress" | "notes";
+type Tab = "overview" | "training" | "nutrition" | "progress" | "notes";
+// Old links (?tab=plan, ?tab=workouts) land on the merged Training tab.
+const toTab = (t: string | null): Tab => (t === "plan" || t === "workouts" ? "training" : (["overview", "training", "nutrition", "progress", "notes"] as const).find((x) => x === t) ?? "overview");
 
 function ClientProfileInner({ id }: { id: string }) {
   const supabase = createClient();
   const router = useRouter();
   const params = useSearchParams();
   const { profile } = useProfile();
-  const [tab, setTab] = useState<Tab>((params.get("tab") as Tab) || "overview");
+  const [tab, setTab] = useState<Tab>(toTab(params.get("tab")));
   const [from, setFrom] = useState(addDays(localDate(), -27));
   const [to, setTo] = useState(localDate());
   const [busy, setBusy] = useState(false);
@@ -67,10 +70,21 @@ function ClientProfileInner({ id }: { id: string }) {
   }
   const { client, status } = data;
   const active = status === "active";
+  const rangeBar = (
+        <div className="flex flex-wrap items-end gap-2 rounded-2xl border border-line bg-surface p-3">
+          <Field label="From"><Input type="date" value={from} max={to} onChange={(e) => e.target.value && setFrom(e.target.value)} /></Field>
+          <Field label="To"><Input type="date" value={to} min={from} onChange={(e) => e.target.value && setTo(e.target.value)} /></Field>
+          <div className="flex gap-1 pb-0.5">
+            {[7, 28, 90].map((n) => (
+              <Button key={n} size="sm" variant="ghost" onClick={() => { setFrom(addDays(localDate(), -(n - 1))); setTo(localDate()); }}>{n}d</Button>
+            ))}
+          </div>
+        </div>
+  );
 
   return (
     <div className="space-y-4">
-      <Link href="/coach" className="inline-flex min-h-10 items-center gap-1 text-sm font-semibold text-muted"><ChevronLeft className="size-4" /> Dashboard</Link>
+      <Link href="/coach/clients" className="inline-flex min-h-10 items-center gap-1 text-sm font-semibold text-muted"><ChevronLeft className="size-4" /> Clients</Link>
       <ProfileHeader
         clientId={client.id}
         viewer="coach"
@@ -93,37 +107,30 @@ function ClientProfileInner({ id }: { id: string }) {
         onChange={setTab}
         options={[
           { value: "overview", label: "Overview" },
-          { value: "plan", label: "Plan" },
-          { value: "workouts", label: "Workouts" },
+          { value: "training", label: "Training" },
           { value: "nutrition", label: "Nutrition" },
           { value: "progress", label: "Progress" },
           { value: "notes", label: "Notes" },
         ]}
       />
 
-      {(tab === "workouts" || tab === "progress") && (
-        <div className="flex flex-wrap items-end gap-2 rounded-2xl border border-line bg-surface p-3">
-          <Field label="From"><Input type="date" value={from} max={to} onChange={(e) => e.target.value && setFrom(e.target.value)} /></Field>
-          <Field label="To"><Input type="date" value={to} min={from} onChange={(e) => e.target.value && setTo(e.target.value)} /></Field>
-          <div className="flex gap-1 pb-0.5">
-            {[7, 28, 90].map((n) => (
-              <Button key={n} size="sm" variant="ghost" onClick={() => { setFrom(addDays(localDate(), -(n - 1))); setTo(localDate()); }}>{n}d</Button>
-            ))}
-          </div>
-        </div>
-      )}
-
       {tab === "overview" && (
         <div className="space-y-4">
+          <CoachSummary clientId={client.id} unit={client.weight_unit} onOpen={setTab} />
           <WeekGlance clientId={client.id} unit={client.weight_unit} />
-          <TrainingCalendar clientId={client.id} unit={client.weight_unit} />
-          <MuscleHeatMap clientId={client.id} canEditTargets={active} onTargetsSaved={() => setTargetsVersion((v) => v + 1)} />
-          {/* remount after a target edit so the comparison colours use the new targets */}
-          <PeriodCompare key={targetsVersion} clientId={client.id} unit={client.weight_unit} />
         </div>
       )}
-      {tab === "plan" && <PlanTab clientId={client.id} active={active} />}
-      {tab === "workouts" && <WorkoutsTab clientId={client.id} unit={client.weight_unit} from={from} to={to} openId={params.get("session")} />}
+      {tab === "training" && (
+        <div className="space-y-4">
+          <PlanTab clientId={client.id} active={active} />
+          <TrainingCalendar clientId={client.id} unit={client.weight_unit} />
+          <section className="space-y-3">
+            <h2 className="font-semibold tracking-tight">Workout log</h2>
+            {rangeBar}
+            <WorkoutsTab clientId={client.id} unit={client.weight_unit} from={from} to={to} openId={params.get("session")} />
+          </section>
+        </div>
+      )}
       {tab === "nutrition" && (
         <div className="space-y-4">
           <MealPlanTab clientId={client.id} active={active} onAssigned={() => setTargetsVersion((v) => v + 1)} />
@@ -133,6 +140,10 @@ function ClientProfileInner({ id }: { id: string }) {
       )}
       {tab === "progress" && (
         <div className="space-y-4">
+          {/* remount after a target edit so the comparison colours use the new targets */}
+          <PeriodCompare key={targetsVersion} clientId={client.id} unit={client.weight_unit} />
+          <MuscleHeatMap clientId={client.id} canEditTargets={active} onTargetsSaved={() => setTargetsVersion((v) => v + 1)} />
+          {rangeBar}
           <ProgressView clientId={client.id} unit={client.weight_unit} canLogWeight={false} canEditTargets={active} from={from} to={to} />
           <ProgressPhotos clientId={client.id} canUpload={false} />
         </div>
@@ -205,9 +216,8 @@ function PlanTab({ clientId, active }: { clientId: string; active: boolean }) {
       )}
 
       {active && (
-        <Card>
+        <Collapse open={!data.plan} title={data.plan ? "Assign a new plan" : "Assign a plan"}>
           <form onSubmit={assign} className="space-y-3" noValidate>
-            <h2 className="font-semibold">{data.plan ? "Assign a new plan" : "Assign a plan"}</h2>
             <p className="text-sm text-muted">The template is copied for this client, so you can customise it without changing the template. {data.plan && "The current plan is replaced; logged workouts are kept."}</p>
             {data.templates.length === 0 ? (
               <p className="text-sm">You have no templates yet. <Link href="/coach/plans" className="font-semibold text-brand">Create one</Link>.</p>
@@ -228,7 +238,7 @@ function PlanTab({ clientId, active }: { clientId: string; active: boolean }) {
               </>
             )}
           </form>
-        </Card>
+        </Collapse>
       )}
 
       {data.history.length > 1 && (
@@ -291,9 +301,8 @@ function MealPlanTab({ clientId, active, onAssigned }: { clientId: string; activ
         <Empty icon={<Salad className="size-8" />} title="No meal plan assigned">Assign one of your meal plans below, or just set daily targets.</Empty>
       )}
       {active && (
-        <Card>
+        <Collapse open={!data.plan} title={data.plan ? "Assign a new meal plan" : "Assign a meal plan"}>
           <form onSubmit={assign} className="space-y-3" noValidate>
-            <h2 className="font-semibold">{data.plan ? "Assign a new meal plan" : "Assign a meal plan"}</h2>
             <p className="text-sm text-muted">The meal plan is copied for this client and sets their daily targets. {data.plan && "The current meal plan is replaced; logged meals are kept."}</p>
             {data.templates.length === 0 ? (
               <p className="text-sm">You have no meal plans yet. <Link href="/coach/plans?tab=nutrition" className="font-semibold text-brand">Create one</Link>.</p>
@@ -310,9 +319,22 @@ function MealPlanTab({ clientId, active, onAssigned }: { clientId: string; activ
               </>
             )}
           </form>
-        </Card>
+        </Collapse>
       )}
     </div>
+  );
+}
+
+/** A card that starts folded when there's already something assigned, so the current plan reads first. */
+function Collapse({ open, title, children }: { open: boolean; title: string; children: React.ReactNode }) {
+  return (
+    <details open={open} className="group panel rounded-2xl border border-line shadow-card">
+      <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-2 px-4 font-semibold [&::-webkit-details-marker]:hidden">
+        {title}
+        <ChevronDown className="size-5 text-muted transition-transform group-open:rotate-180" aria-hidden />
+      </summary>
+      <div className="px-4 pb-4">{children}</div>
+    </details>
   );
 }
 
