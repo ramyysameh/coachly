@@ -2,6 +2,7 @@
 import Link from "next/link";
 import NumberFlow from "@number-flow/react";
 import { AlertTriangle, Dumbbell, Loader2, RotateCw } from "lucide-react";
+import { useLayoutEffect, useRef } from "react";
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 
@@ -195,9 +196,42 @@ export function Meter({ label, value, target, unit }: { label: string; value: nu
   );
 }
 
+/**
+ * Segmented control. One thumb slides between options (like iOS), rather than the highlight
+ * jumping from button to button. The thumb is measured from the selected button, so it follows
+ * label widths, wrapping to a scroll, and resizes. No slide on first paint or under reduced motion.
+ */
 export function Tabs<T extends string>({ value, onChange, options }: { value: T; onChange: (v: T) => void; options: { value: T; label: string }[] }) {
+  const list = useRef<HTMLDivElement>(null);
+  const thumb = useRef<HTMLSpanElement>(null);
+  const placed = useRef(false);
+  useLayoutEffect(() => {
+    const root = list.current;
+    const el = thumb.current;
+    if (!root || !el) return;
+    const place = (animate: boolean) => {
+      const tab = root.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
+      if (!tab) return void (el.style.opacity = "0");
+      el.style.transition = animate ? "" : "none";
+      el.style.opacity = "1";
+      el.style.width = `${tab.offsetWidth}px`;
+      el.style.transform = `translateX(${tab.offsetLeft}px)`;
+      if (!animate) void el.offsetWidth; // commit without a transition, then restore it
+      el.style.transition = "";
+    };
+    place(placed.current);
+    placed.current = true;
+    const ro = new ResizeObserver(() => place(false));
+    ro.observe(root);
+    return () => ro.disconnect();
+  }, [value, options]);
   return (
-    <div className="flex gap-1 overflow-x-auto rounded-xl bg-surface-2 p-1" role="tablist">
+    <div ref={list} className="relative isolate flex gap-1 overflow-x-auto rounded-xl bg-surface-2 p-1" role="tablist">
+      <span
+        ref={thumb}
+        aria-hidden
+        className="absolute inset-y-1 left-0 -z-10 rounded-lg bg-surface opacity-0 shadow-card ring-1 ring-line transition-[transform,width] duration-300 ease-out-quart motion-reduce:transition-none"
+      />
       {options.map((o) => (
         <button
           key={o.value}
@@ -205,8 +239,8 @@ export function Tabs<T extends string>({ value, onChange, options }: { value: T;
           aria-selected={value === o.value}
           onClick={() => onChange(o.value)}
           className={cn(
-            "min-h-10 shrink-0 flex-1 rounded-lg px-3 text-sm font-semibold whitespace-nowrap transition-[background-color,color,box-shadow] duration-150",
-            value === o.value ? "bg-surface text-ink shadow-card ring-1 ring-line" : "text-muted hover:text-ink",
+            "min-h-10 shrink-0 flex-1 rounded-lg px-3 text-sm font-semibold whitespace-nowrap transition-[color,transform] duration-150 ease-out active:scale-[0.97]",
+            value === o.value ? "text-ink" : "text-muted hover:text-ink",
           )}
         >
           {o.label}

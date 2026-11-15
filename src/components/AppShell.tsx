@@ -130,7 +130,7 @@ export default function AppShell({ profile, children }: { profile: Profile; chil
     <ProfileContext.Provider value={{ profile, unread, refreshUnread }}>
       <div className="min-h-dvh md:flex">
         {/* Desktop sidebar (coaches mainly use this) */}
-        <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-r border-line bg-surface p-4 md:flex">
+        <aside data-recede className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-r border-line bg-surface p-4 md:flex">
           <div className="mb-8 px-2">
             <BrandMark />
           </div>
@@ -170,7 +170,7 @@ export default function AppShell({ profile, children }: { profile: Profile; chil
           </div>
         </aside>
 
-        <div className="min-w-0 flex-1">
+        <div data-recede className="min-w-0 flex-1">
           {/* Mobile top bar */}
           <header
             className="chrome sticky top-0 z-20 flex items-center justify-between border-b border-line/70 bg-surface/80 px-4 py-2 backdrop-blur-xl backdrop-saturate-150 md:hidden"
@@ -199,6 +199,7 @@ export default function AppShell({ profile, children }: { profile: Profile; chil
 
         {/* Mobile bottom navigation */}
         <nav
+          data-recede
           className="chrome fixed inset-x-0 bottom-0 z-30 grid border-t border-line/70 bg-surface/85 backdrop-blur-xl backdrop-saturate-150 md:hidden"
           style={{ gridTemplateColumns: `repeat(${tabs.length}, 1fr)`, paddingBottom: "env(safe-area-inset-bottom)" }}
           aria-label="Main"

@@ -3,6 +3,7 @@ import { use, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactN
 import Link from "next/link";
 import NumberFlow from "@number-flow/react";
 import { useRouter } from "next/navigation";
+import { createPortal } from "react-dom";
 import { ArrowLeftRight, Calculator, Check, ChevronLeft, Flame, Link2, Minus, Plus, Timer, X } from "lucide-react";
 import { fmtDuration, parseDuration, supersetRuns } from "@/lib/workout";
 import { ExerciseBrowser, useLibrary } from "@/components/ExerciseLibrary";
@@ -978,9 +979,12 @@ function RestTimer({ rest, leaving, onExited, onClose, onAdjust }: {
       return () => clearTimeout(t);
     }
   }, [left, leaving, onClose]);
-  return (
+  // Portalled to <body>: the content column it sits in is scaled while a sheet is open, which would
+  // make it the containing block for this fixed card. It recedes as a layer of its own instead.
+  return createPortal(
     <div
       ref={card}
+      data-recede
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
@@ -1004,6 +1008,7 @@ function RestTimer({ rest, leaving, onExited, onClose, onAdjust }: {
       </button>
       {/* remaining-rest bar */}
       <span ref={bar} aria-hidden className="absolute inset-x-0 bottom-0 h-1 origin-left bg-brand" />
-    </div>
+    </div>,
+    document.body,
   );
 }
