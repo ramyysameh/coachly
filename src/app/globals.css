@@ -1,4 +1,6 @@
 @import "tailwindcss";
+/* Agent worktrees live under .claude/; keep their copies of the source out of the class scan. */
+@source not "../../.claude";
 
 /*
  * Design tokens. Utilities read these as CSS variables, so the dark block
