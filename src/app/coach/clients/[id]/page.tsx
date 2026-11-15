@@ -2,10 +2,11 @@
 import Link from "next/link";
 import { Suspense, use, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Archive, ArchiveRestore, ChevronDown, ChevronLeft, ClipboardList, MessageCircle, Pencil, StickyNote, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, ChevronDown, ChevronLeft, ClipboardList, MessageCircle, Pencil, Salad, StickyNote, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useAsync, must } from "@/lib/useAsync";
-import { getActivePlan, SESSION_SELECT, sortSession, type Plan, type Session, type Targets } from "@/lib/data";
+import { getActivePlan, NUTRITION_PLAN_SELECT, SESSION_SELECT, sortNutritionPlan, sortSession, type NutritionPlan, type Plan, type Session, type Targets } from "@/lib/data";
+import { MealPlanView } from "@/components/MealPlan";
 import { useProfile } from "@/components/AppShell";
 import NutritionDay from "@/components/NutritionDay";
 import MuscleHeatMap from "@/components/MuscleHeatMap";
@@ -125,7 +126,8 @@ function ClientProfileInner({ id }: { id: string }) {
       {tab === "workouts" && <WorkoutsTab clientId={client.id} unit={client.weight_unit} from={from} to={to} openId={params.get("session")} />}
       {tab === "nutrition" && (
         <div className="space-y-4">
-          <TargetsForm clientId={client.id} active={active} />
+          <MealPlanTab clientId={client.id} active={active} onAssigned={() => setTargetsVersion((v) => v + 1)} />
+          <TargetsForm key={targetsVersion} clientId={client.id} active={active} />
           <NutritionDay clientId={client.id} editable={false} />
         </div>
       )}
@@ -240,6 +242,74 @@ function PlanTab({ clientId, active }: { clientId: string; active: boolean }) {
               </li>
             ))}
           </ul>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function MealPlanTab({ clientId, active, onAssigned }: { clientId: string; active: boolean; onAssigned: () => void }) {
+  const supabase = createClient();
+  const { profile } = useProfile();
+  const [templateId, setTemplateId] = useState("");
+  const [assigning, setAssigning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const { data, loading, error: loadError, reload } = useAsync(async () => {
+    const [plan, templates] = await Promise.all([
+      supabase.from("nutrition_plans").select(NUTRITION_PLAN_SELECT).eq("client_id", clientId).maybeSingle(),
+      supabase.from("nutrition_plans").select("id, name").eq("coach_id", profile.id).is("client_id", null).order("created_at"),
+    ]);
+    return { plan: sortNutritionPlan(must(plan) as NutritionPlan | null), templates: must(templates) as { id: string; name: string }[] };
+  }, [clientId]);
+
+  async function assign(e: React.FormEvent) {
+    e.preventDefault();
+    if (!templateId) return setError("Choose a meal plan.");
+    setAssigning(true);
+    setError(null);
+    const { error } = await supabase.rpc("assign_nutrition_plan", { p_source: templateId, p_client: clientId });
+    setAssigning(false);
+    if (error) return setError(errMsg(error));
+    setTemplateId("");
+    notify.success("Meal plan assigned. Daily targets updated.");
+    onAssigned();
+    reload({ silent: true });
+  }
+
+  if (loading) return <Spinner />;
+  if (loadError || !data) return <ErrorBox message={loadError ?? "Couldn't load meal plan"} onRetry={reload} />;
+
+  return (
+    <div className="space-y-4">
+      {data.plan ? (
+        <div className="space-y-2">
+          <MealPlanView plan={data.plan} title="Assigned meal plan" />
+          {active && <LinkButton href={`/coach/plans/nutrition/${data.plan.id}`} variant="secondary"><Pencil className="size-4" /> Edit meal plan</LinkButton>}
+        </div>
+      ) : (
+        <Empty icon={<Salad className="size-8" />} title="No meal plan assigned">Assign one of your meal plans below, or just set daily targets.</Empty>
+      )}
+      {active && (
+        <Card>
+          <form onSubmit={assign} className="space-y-3" noValidate>
+            <h2 className="font-semibold">{data.plan ? "Assign a new meal plan" : "Assign a meal plan"}</h2>
+            <p className="text-sm text-muted">The meal plan is copied for this client and sets their daily targets. {data.plan && "The current meal plan is replaced; logged meals are kept."}</p>
+            {data.templates.length === 0 ? (
+              <p className="text-sm">You have no meal plans yet. <Link href="/coach/plans?tab=nutrition" className="font-semibold text-brand">Create one</Link>.</p>
+            ) : (
+              <>
+                <Field label="Meal plan">
+                  <Select value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
+                    <option value="">Choose…</option>
+                    {data.templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  </Select>
+                </Field>
+                {error && <ErrorBox message={error} />}
+                <Button type="submit" loading={assigning}>Copy &amp; assign</Button>
+              </>
+            )}
+          </form>
         </Card>
       )}
     </div>
