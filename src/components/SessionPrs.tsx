@@ -2,6 +2,7 @@
 import { Medal } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useAsync, must } from "@/lib/useAsync";
+import { rpcAll } from "@/lib/rpcAll";
 import { PR_LABEL, prEvents, type PrEvent, type SetRow } from "@/lib/analytics";
 import { addDays, fromKg, type Unit } from "@/lib/utils";
 
@@ -14,7 +15,7 @@ export default function SessionPrs({ clientId, sessionId, date, unit, celebrate 
 }) {
   const supabase = createClient();
   const { data } = useAsync(async () => {
-    const rows = must(await supabase.rpc("completed_sets", { p_client: clientId, p_from: addDays(date, -730), p_to: date })) as SetRow[];
+    const rows = must(await rpcAll(supabase, "completed_sets", { p_client: clientId, p_from: addDays(date, -730), p_to: date })) as SetRow[];
     return prEvents(rows).filter((e) => e.session_id === sessionId);
   }, [clientId, sessionId, date]);
 

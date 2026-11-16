@@ -4,6 +4,7 @@ import NumberFlow from "@number-flow/react";
 import { CheckCircle2, Flame, Medal, Share2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useAsync, must } from "@/lib/useAsync";
+import { rpcAll } from "@/lib/rpcAll";
 import { getActivePlan, SESSION_SELECT, sortSession, type Session } from "@/lib/data";
 import { streak, type CalSession } from "@/lib/calendar";
 import { PR_LABEL, prEvents, setsPerMuscle, type SetRow } from "@/lib/analytics";
@@ -32,7 +33,7 @@ export default function WorkoutSummary({ clientId, sessionId, unit }: { clientId
       supabase.from("workout_sessions").select("id", { count: "exact", head: true })
         .eq("client_id", clientId).eq("status", "completed").lte("completed_at", session.completed_at!),
       getActivePlan(supabase, clientId).catch(() => null),
-      supabase.rpc("completed_sets", { p_client: clientId, p_from: addDays(session.scheduled_date, -730), p_to: session.scheduled_date }),
+      rpcAll(supabase, "completed_sets", { p_client: clientId, p_from: addDays(session.scheduled_date, -730), p_to: session.scheduled_date }),
       supabase.from("workout_sessions").select("id, scheduled_date, name, status, plan_day_id, started_at, completed_at")
         .eq("client_id", clientId).gte("scheduled_date", addDays(session.scheduled_date, -400)),
     ]);
