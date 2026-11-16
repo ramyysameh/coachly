@@ -4,6 +4,7 @@ import NumberFlow, { type Format } from "@number-flow/react";
 import { ArrowDownRight, ArrowUpRight, CalendarCheck, Dumbbell, Medal, Ruler, Scale, SlidersHorizontal, Sparkles, Target, Trophy } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useAsync, must } from "@/lib/useAsync";
+import { rpcAll } from "@/lib/rpcAll";
 import { getActivePlan, type Plan } from "@/lib/data";
 import { buildDays, type CalSession } from "@/lib/calendar";
 import {
@@ -38,7 +39,7 @@ export default function ProgressView({ clientId, unit, canLogWeight, canEditTarg
     // A year of history so records and "previous best" are right even for a short range.
     const histFrom = addDays(rangeFrom < addDays(today, -365) ? rangeFrom : addDays(today, -365), 0);
     const [sets, sessions, plan, bw, bm, targets] = await Promise.all([
-      supabase.rpc("completed_sets", { p_client: clientId, p_from: histFrom, p_to: today }),
+      rpcAll(supabase, "completed_sets", { p_client: clientId, p_from: histFrom, p_to: today }),
       supabase.from("workout_sessions").select("id, scheduled_date, name, status, plan_day_id, started_at, completed_at")
         .eq("client_id", clientId).gte("scheduled_date", histFrom).order("scheduled_date"),
       getActivePlan(supabase, clientId),

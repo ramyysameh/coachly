@@ -4,6 +4,7 @@ import { Flame, SlidersHorizontal } from "lucide-react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import { useAsync, must } from "@/lib/useAsync";
+import { rpcAll } from "@/lib/rpcAll";
 import {
   DEFAULT_TARGET, daysIn, fmtSets, muscleExercises, muscleTargets, perWeek, setsPerMuscle, STATUS_LABEL, volumeStatus,
   type MuscleTargetRow, type MuscleTargets, type SetRow, type VolumeStatus,
@@ -95,7 +96,7 @@ export default function MuscleHeatMap({ clientId, canEditTargets = false, onTarg
 
   const { data, loading, error, reload } = useAsync(async () => {
     const [sets, targets] = await Promise.all([
-      supabase.rpc("completed_sets", { p_client: clientId, p_from: from, p_to: to }),
+      rpcAll(supabase, "completed_sets", { p_client: clientId, p_from: from, p_to: to }),
       loadTargets(supabase, clientId),
     ]);
     return { sets: must(sets) as SetRow[], targets };

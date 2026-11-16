@@ -12,6 +12,7 @@ import { createClient } from "@/lib/supabase/client";
 import { playChime, primeChime } from "@/lib/chime";
 import { prefersReducedMotion, project, releaseVelocity, rubberband, springTo, type SpringState } from "@/lib/motion";
 import { useAsync, must } from "@/lib/useAsync";
+import { rpcAll } from "@/lib/rpcAll";
 import { SESSION_SELECT, sortSession, type Exercise, type Session, type SessionExercise, type SessionSet, type SetType } from "@/lib/data";
 import { useProfile } from "@/components/AppShell";
 import { Badge, Button, ErrorBox, Field, NumInput, Spinner, Textarea } from "@/components/ui";
@@ -80,7 +81,7 @@ export default function SessionPage({ params }: { params: Promise<{ id: string }
     const [s, prev, history] = await Promise.all([
       supabase.from("workout_sessions").select(SESSION_SELECT).eq("id", id).maybeSingle(),
       supabase.rpc("last_performance", { p_session: id }),
-      supabase.rpc("completed_sets", { p_client: profile.id, p_from: addDays(today, -730), p_to: addDays(today, 1) }),
+      rpcAll(supabase, "completed_sets", { p_client: profile.id, p_from: addDays(today, -730), p_to: addDays(today, 1) }),
     ]);
     const session = sortSession(must(s) as Session | null);
     if (!session) throw new Error("Workout not found");

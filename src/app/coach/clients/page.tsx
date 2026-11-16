@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { AlertTriangle, ChevronRight, Dumbbell, Medal, Scale, Search, UserPlus, Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useAsync, must } from "@/lib/useAsync";
+import { rpcAll } from "@/lib/rpcAll";
 import { useProfile } from "@/components/AppShell";
 import { Avatar, Badge, Empty, ErrorBox, Input, LinkButton, PageHeader, Spinner, Tabs } from "@/components/ui";
 import { PLAN_SELECT, type Plan } from "@/lib/data";
@@ -46,7 +47,7 @@ export default function ClientsPage() {
         .in("client_id", idList).gte("scheduled_date", addDays(today, -91)).order("scheduled_date"),
       supabase.from("body_weights").select("client_id, entry_date, weight_kg").in("client_id", idList).gte("entry_date", addDays(today, -120)),
       // Active clients' sets for a year, so PRs are judged against real records (archived clients get none).
-      supabase.rpc("coach_completed_sets", { p_from: addDays(today, -365), p_to: today }),
+      rpcAll(supabase, "coach_completed_sets", { p_from: addDays(today, -365), p_to: today }),
     ]);
     const profById = new Map((must(profs) as Prof[]).map((p) => [p.id, p]));
     const planRows = must(plans) as Plan[];

@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { ArrowDownRight, ArrowUpRight, Columns2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useAsync, must } from "@/lib/useAsync";
+import { rpcAll } from "@/lib/rpcAll";
 import { daysIn, fmtSets, monthBounds, periodTotals, prEvents, type PeriodTotals, type SessionRow, type SetRow } from "@/lib/analytics";
 import { muscleLabel } from "@/lib/muscles";
 import MuscleMap from "@/components/MuscleMap";
@@ -50,7 +51,7 @@ export default function PeriodCompare({ clientId, unit }: { clientId: string; un
     // a year before the earliest period so PRs are judged against real previous bests
     const histFrom = addDays(earliest, -365);
     const [sets, sessions, targets] = await Promise.all([
-      supabase.rpc("completed_sets", { p_client: clientId, p_from: histFrom, p_to: today }),
+      rpcAll(supabase, "completed_sets", { p_client: clientId, p_from: histFrom, p_to: today }),
       supabase.from("workout_sessions").select("id, scheduled_date, status, started_at, completed_at")
         .eq("client_id", clientId).gte("scheduled_date", earliest).order("scheduled_date"),
       loadTargets(supabase, clientId),

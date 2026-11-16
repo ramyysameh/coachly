@@ -4,6 +4,7 @@ import NumberFlow from "@number-flow/react";
 import { AlertTriangle, CalendarX, ChevronRight, Dumbbell, Flag as FlagIcon, Medal, MessageCircle, Scale, TrendingUp, UserPlus, Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useAsync, must } from "@/lib/useAsync";
+import { rpcAll } from "@/lib/rpcAll";
 import { useProfile } from "@/components/AppShell";
 import { Avatar, Badge, Card, Empty, ErrorBox, LinkButton, PageHeader, Skeleton } from "@/components/ui";
 import { addDays, fmtDate, fmtDateTime, localDate, type Unit } from "@/lib/utils";
@@ -35,7 +36,7 @@ export default function CoachDashboard() {
       supabase.from("workout_sessions").select("client_id, completed_at").in("client_id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]).eq("status", "completed").order("completed_at", { ascending: false }).limit(500),
       supabase.rpc("coach_missed_sessions", { p_from: addDays(today, -14), p_to: addDays(today, -1) }),
       // Sets of every active client: a year so PR highlights are real records; the flags get the last 120 days.
-      supabase.rpc("coach_completed_sets", { p_from: addDays(today, -365), p_to: today }),
+      rpcAll(supabase, "coach_completed_sets", { p_from: addDays(today, -365), p_to: today }),
       supabase.from("plans").select(PLAN_SELECT).in("client_id", idList).eq("is_active", true),
       supabase.from("workout_sessions").select("id, client_id, scheduled_date, name, status, plan_day_id, started_at, completed_at")
         .in("client_id", idList).gte("scheduled_date", addDays(today, -91)).order("scheduled_date"),

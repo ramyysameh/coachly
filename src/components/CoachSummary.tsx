@@ -2,6 +2,7 @@
 import { AlertTriangle, CalendarCheck, ChevronRight, Clock, Dumbbell, Medal, Scale, TrendingUp } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useAsync, must } from "@/lib/useAsync";
+import { rpcAll } from "@/lib/rpcAll";
 import { getActivePlan } from "@/lib/data";
 import type { CalSession } from "@/lib/calendar";
 import { PR_LABEL, type SetRow } from "@/lib/analytics";
@@ -24,7 +25,7 @@ export default function CoachSummary({ clientId, unit, onOpen }: { clientId: str
       getActivePlan(supabase, clientId).catch(() => null),
       supabase.from("workout_sessions").select("id, scheduled_date, name, status, plan_day_id, started_at, completed_at")
         .eq("client_id", clientId).gte("scheduled_date", addDays(today, -91)).order("scheduled_date"),
-      supabase.rpc("completed_sets", { p_client: clientId, p_from: addDays(today, -365), p_to: today }),
+      rpcAll(supabase, "completed_sets", { p_client: clientId, p_from: addDays(today, -365), p_to: today }),
       supabase.from("body_weights").select("entry_date, weight_kg").eq("client_id", clientId).gte("entry_date", addDays(today, -120)),
     ]);
     return clientStats({
