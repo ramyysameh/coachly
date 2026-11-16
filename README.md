@@ -91,15 +91,28 @@ scripts/rls-check.mjs           direct API requests proving cross-account access
 
 ## Tests
 
-With Supabase running and the dev server up (`npm run dev`):
+The browser and API tests sign in as the demo accounts and write data, so they only run against the **local** Supabase stack. Their settings live in `.env.test.local`, separate from `.env.local`, and they refuse to start if that file points anywhere other than `127.0.0.1`/`localhost`.
+
+```bash
+npx supabase start                # once per boot (Docker Desktop must be running)
+npx supabase db reset             # all migrations + the demo seed
+```
+
+`.env.test.local`:
+
+```
+NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<"Publishable" key from `npx supabase status`>
+```
 
 ```bash
 npx playwright install chromium   # once
-npm run test:acceptance           # the 7 acceptance flows, separate coach and client browser sessions
+npm run test:acceptance           # Playwright builds the app into .next-test and serves it on :3100 against the local stack
 npm run test:rls                  # direct API access-denial checks
+npm run test:db                   # migration logic on an in-memory Postgres (no Docker needed)
 ```
 
-`test:acceptance` resets nothing but creates a fresh client per run; run `npx supabase db reset` for a clean slate.
+`test:acceptance` creates a fresh client per run; run `npx supabase db reset` for a clean slate.
 
 ## Out of scope
 

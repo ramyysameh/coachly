@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
+import { loadTestEnv } from "./testEnv";
 import { test, expect, type Browser, type Page } from "@playwright/test";
 const PASSWORD = "demo-pass-123";
 const stamp = Date.now();
@@ -41,9 +41,7 @@ test("coach target save toasts and keeps the acceptance copy", async ({ browser 
 
 /** A Supabase client signed in as a demo account, for seeding and cleanup the UI can't do. */
 async function signedInApi(email: string) {
-  const env = Object.fromEntries(
-    readFileSync(".env.local", "utf8").split(/\r?\n/).map((l) => l.trim()).filter((l) => l.includes("=")).map((l) => [l.slice(0, l.indexOf("=")), l.slice(l.indexOf("=") + 1)]),
-  );
+  const env = loadTestEnv();
   const api = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
   const { data: auth, error } = await api.auth.signInWithPassword({ email, password: PASSWORD });
   if (error) throw error;
@@ -232,15 +230,23 @@ test("archiving a client can be undone", async ({ browser }) => {
     expect(dialogs).toEqual([]);
     await expect(page.getByRole("button", { name: "Archive" })).toBeVisible();
   } finally {
-    // If the client was left archived, undo is still allowed within 10 minutes of archiving.
+    // If Alex was left archived (this or an earlier, crashed run), reconnect him the way a real
+    // client would: the coach's undo only works for 10 minutes, so Alex accepts a fresh invite.
     await page.goto(url);
     await expect(page.getByRole("button", { name: "Archive" }).or(page.getByRole("link", { name: "Invite again" }))).toBeVisible();
-    if (await page.getByRole("link", { name: "Invite again" }).count()) {
-      const { api } = await signedInApi("coach@demo.test");
-      await api.rpc("set_client_status", { p_client: "22222222-2222-2222-2222-222222222222", p_status: "active" });
-    }
+    if (await page.getByRole("link", { name: "Invite again" }).count()) await reconnectAlex();
   }
 });
+
+/** Reconnects Alex to the demo coach through a new invite, as the client would. */
+async function reconnectAlex() {
+  const { api: coachApi, userId: coachId } = await signedInApi("coach@demo.test");
+  const { data: inv, error } = await coachApi.from("invitations").insert({ coach_id: coachId, note: "test cleanup" }).select("token").single();
+  if (error) throw error;
+  const { api: alexApi } = await signedInApi("alex@demo.test");
+  const accepted = await alexApi.rpc("accept_invitation", { p_token: inv.token });
+  if (accepted.error) throw accepted.error;
+}
 
 async function openPicker(page: Page) {
   await openFirstTemplate(page);
@@ -261,7 +267,8 @@ test("picker fuzzy-matches and adds with the keyboard", async ({ browser }) => {
   try {
     await addBtn.click();
     const picker = page.getByRole("dialog", { name: "Exercise library" });
-    await picker.getByLabel("Search exercises").fill("dumb incl");
+    // Words match in any order; "press" makes the top hit unambiguous (the fly matches "dumb incl" just as well).
+    await picker.getByLabel("Search exercises").fill("dumb incl press");
     // [cmdk-list]: the filter selects' <option>s also have the option role.
     const options = picker.locator("[cmdk-list]").getByRole("option");
     await expect(options.first()).toContainText("Incline Dumbbell Press");
