@@ -10,6 +10,7 @@ import { cmToFtIn, ftInToCm, GOALS, LEVELS } from "@/lib/profile";
 import { cn, errMsg, localDate } from "@/lib/utils";
 import { notify } from "@/lib/notify";
 import PushToggle from "@/components/PushToggle";
+import CoachLink from "@/components/CoachLink";
 
 export default function EditProfilePage() {
   const { profile } = useProfile();
@@ -137,6 +138,7 @@ export default function EditProfilePage() {
       </form>
       {/* Per device, saved straight away: kept out of the profile form and its Save button. */}
       <div className="mt-4"><PushToggle userId={profile.id} role="client" /></div>
+      <div className="mt-4"><CoachLink clientId={profile.id} /></div>
     </div>
   );
 }
