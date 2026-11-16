@@ -5,6 +5,7 @@ import { Command, useCommandState } from "cmdk";
 import { ClipboardList, Dumbbell, MessageCircle, Plus, Search, User, UserPlus } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { must, useAsync } from "@/lib/useAsync";
+import { clientNames } from "@/lib/clientNames";
 import { wordFilter } from "@/lib/commandFilter";
 // Not useLibrary(): ExerciseLibrary imports AppShell, and AppShell renders this, so that would be an import cycle.
 import { Sheet } from "@/components/Sheet";
@@ -124,7 +125,10 @@ function SearchList({ coachId, go }: { coachId: string; go: (href: string) => vo
       supabase.from("plans").select("id, name").eq("coach_id", coachId).is("client_id", null).order("created_at", { ascending: false }),
       supabase.from("exercises").select("id, name, equipment, movements(name)").order("name"),
     ]);
-    const rows = (must(clients) as unknown as ClientRow[]).sort((a, b) => (a.profiles?.full_name ?? "").localeCompare(b.profiles?.full_name ?? ""));
+    const all = must(clients) as unknown as ClientRow[];
+    // Former clients' profiles aren't readable any more: their names come from client_names().
+    const names = await clientNames(supabase, all.filter((c) => !c.profiles).map((c) => c.client_id));
+    const rows = all.map((c) => c.profiles ? c : { ...c, profiles: names.has(c.client_id) ? { full_name: names.get(c.client_id)!.full_name } : null }).sort((a, b) => (a.profiles?.full_name ?? "").localeCompare(b.profiles?.full_name ?? ""));
     const result = { clients: rows, plans: must(plans) as PlanRow[], exercises: must(exercises) as unknown as ExerciseRow[] };
     lastResults.set(coachId, result);
     return result;

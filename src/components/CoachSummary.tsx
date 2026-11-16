@@ -21,7 +21,7 @@ export default function CoachSummary({ clientId, unit, onOpen }: { clientId: str
   const today = localDate();
   const { data, loading, error, reload } = useAsync(async () => {
     const [p, plan, sessions, sets, weights] = await Promise.all([
-      supabase.from("profiles").select("id, date_of_birth, goal_type, weight_unit, training_days_per_week").eq("id", clientId).single(),
+      supabase.from("profiles").select("id, date_of_birth, goal_type, weight_unit, training_days_per_week").eq("id", clientId).maybeSingle(),
       getActivePlan(supabase, clientId).catch(() => null),
       supabase.from("workout_sessions").select("id, scheduled_date, name, status, plan_day_id, started_at, completed_at")
         .eq("client_id", clientId).gte("scheduled_date", addDays(today, -91)).order("scheduled_date"),
@@ -29,13 +29,14 @@ export default function CoachSummary({ clientId, unit, onOpen }: { clientId: str
       supabase.from("body_weights").select("entry_date, weight_kg").eq("client_id", clientId).gte("entry_date", addDays(today, -120)),
     ]);
     return clientStats({
-      profile: must(p) as StatsProfile,
+      // A former coach can't read the profile any more: summarise without its details.
+      profile: (must(p) as StatsProfile | null) ?? ({ id: clientId, date_of_birth: null, goal_type: null, weight_unit: unit, training_days_per_week: null } as StatsProfile),
       plan,
       sessions: must(sessions) as CalSession[],
       sets: must(sets) as SetRow[],
       weights: must(weights) as { entry_date: string; weight_kg: number }[],
     }, today);
-  }, [clientId, today]);
+  }, [clientId, today, unit]);
 
   if (loading) return <Skeleton className="h-56" />;
   if (error || !data) return <ErrorBox message={error ?? "Couldn't load summary"} onRetry={reload} />;

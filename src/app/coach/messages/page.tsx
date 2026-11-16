@@ -4,12 +4,13 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, MessageCircle } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useAsync, must } from "@/lib/useAsync";
+import { clientNames } from "@/lib/clientNames";
 import { useProfile } from "@/components/AppShell";
 import ChatThread from "@/components/ChatThread";
 import { Avatar, Badge, Empty, ErrorBox, Spinner } from "@/components/ui";
 import { cn } from "@/lib/utils";
 
-type Conv = { id: string; client_id: string; client: { full_name: string }; coach_clients: { status: "active" | "archived" } };
+type Conv = { id: string; client_id: string; client: { full_name: string } | null; coach_clients: { status: "active" | "archived" } };
 
 function MessagesInner() {
   const supabase = createClient();
@@ -23,8 +24,11 @@ function MessagesInner() {
       supabase.rpc("unread_counts"),
     ]);
     const byConv = Object.fromEntries((must(counts) as { conversation_id: string; unread: number }[]).map((c) => [c.conversation_id, Number(c.unread)]));
-    return (must(convs) as unknown as Conv[])
-      .map((c) => ({ ...c, unread: byConv[c.id] ?? 0 }))
+    const rows = must(convs) as unknown as Conv[];
+    // Former clients' profiles aren't readable any more: their names come from client_names().
+    const names = await clientNames(supabase, rows.filter((c) => !c.client).map((c) => c.client_id));
+    return rows
+      .map((c) => ({ ...c, client: c.client ?? { full_name: names.get(c.client_id)?.full_name ?? "Former client" }, unread: byConv[c.id] ?? 0 }))
       .sort((a, b) => (a.coach_clients.status === b.coach_clients.status ? a.client.full_name.localeCompare(b.client.full_name) : a.coach_clients.status === "active" ? -1 : 1));
     // refetch when total unread changes so per-thread badges stay current
   }, [profile.id, unread]);

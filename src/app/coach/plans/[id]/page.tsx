@@ -6,6 +6,7 @@ import { AlertTriangle, ArrowDown, ArrowLeftRight, ArrowUp, ChevronLeft, Copy, I
 import { isLinkedToNext, supersetRuns, toggleSupersetLink } from "@/lib/workout";
 import { createClient } from "@/lib/supabase/client";
 import { useAsync, must } from "@/lib/useAsync";
+import { clientNames } from "@/lib/clientNames";
 import { PLAN_SELECT, sortPlan, type Exercise, type Plan, type PlanDay, type PlanExercise } from "@/lib/data";
 import { ExerciseBrowser, ExerciseThumb, useLibrary, variantLabel } from "@/components/ExerciseLibrary";
 import { useProfile } from "@/components/AppShell";
@@ -60,8 +61,7 @@ export default function PlanBuilderPage({ params }: { params: Promise<{ id: stri
     const plan = sortPlan(must(await supabase.from("plans").select(PLAN_SELECT).eq("id", id).maybeSingle()) as Plan | null);
     let clientName: string | null = null;
     if (plan?.client_id) {
-      const { data: c } = await supabase.from("profiles").select("full_name").eq("id", plan.client_id).maybeSingle();
-      clientName = c?.full_name ?? null;
+      clientName = (await clientNames(supabase, [plan.client_id])).get(plan.client_id)?.full_name ?? null;
     }
     return plan ? { plan, clientName } : null;
   }, [id]);

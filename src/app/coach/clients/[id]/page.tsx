@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Archive, ChevronDown, ChevronLeft, ClipboardList, MessageCircle, Pencil, Salad, StickyNote, Trash2, UserPlus } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useAsync, must } from "@/lib/useAsync";
+import { clientNames } from "@/lib/clientNames";
 import { getActivePlan, NUTRITION_PLAN_SELECT, SESSION_SELECT, sortNutritionPlan, sortSession, type NutritionPlan, type Plan, type Session, type Targets } from "@/lib/data";
 import { MealPlanView } from "@/components/MealPlan";
 import { useProfile } from "@/components/AppShell";
@@ -42,10 +43,13 @@ function ClientProfileInner({ id }: { id: string }) {
       supabase.from("profiles").select("id, full_name, goal, weight_unit").eq("id", id).maybeSingle(),
       supabase.from("coach_clients").select("status, created_at").eq("coach_id", profile.id).eq("client_id", id).order("created_at", { ascending: false }).limit(1).maybeSingle(),
     ]);
-    const c = must(client) as Client | null;
     const r = must(rel) as { status: "active" | "archived"; created_at: string } | null;
     // RLS hides clients that aren't connected to this coach — both come back empty.
-    if (!c || !r) return null;
+    if (!r) return null;
+    // A former coach can't read the profile any more: name and unit come from client_names().
+    const n = (await clientNames(supabase, [id])).get(id);
+    const c = (must(client) as Client | null) ?? (n ? { id, full_name: n.full_name, goal: null, weight_unit: n.weight_unit } : null);
+    if (!c) return null;
     return { client: c, status: r.status, since: r.created_at };
   }, [id, profile.id]);
 

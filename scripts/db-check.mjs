@@ -213,5 +213,27 @@ check("can't remove devices of a former coach or of someone else's client", (awa
 await as(E, `select public.forget_push_endpoints(array['https://push.example/b', 'https://push.example/e'])`);
 check("can remove your own and your coach's devices", (await q(`select count(*)::int n from public.push_subscriptions`)).rows[0].n === 2);
 
+// ───────────────────────── 019: former coach and the profile row ─────────────────────────
+console.log("\n019 former coach and the client's profile");
+await db.exec(`
+create function public.is_client_of(p_coach uuid) returns boolean language sql stable security definer set search_path = '' as $$
+  select exists (select 1 from public.coach_clients cc where cc.client_id = auth.uid() and cc.coach_id = p_coach); $$;
+create type public.weight_unit as enum ('kg','lb');
+alter table public.profiles add column avatar_url text, add column weight_unit public.weight_unit default 'kg';
+alter table public.profiles enable row level security;
+create policy "read own, my clients, my coaches" on public.profiles for select to authenticated using (true);
+update public.profiles set full_name = 'Erin', injuries = 'knee' where id = '${E}';`);
+await migration("20261116000019_former_coach_profile.sql");
+// E's active coach is B and A is E's former coach. S has never coached E.
+const S = "00000000-0000-0000-0000-0000000000f1";
+await db.exec(`insert into public.profiles (id, role, full_name) values ('${S}','coach','Stranger');`);
+check("former coach can't read the client's profile row", (await as(A, `select injuries from public.profiles where id = $1`, [E])).length === 0);
+check("current coach still reads the profile row", (await as(B, `select injuries from public.profiles where id = $1`, [E]))[0]?.injuries === "knee");
+check("client reads their own profile and their coaches'", (await as(E, `select id from public.profiles where id in ($1, $2, $3)`, [E, A, B])).length === 3);
+const names = await as(A, `select * from public.client_names(array['${E}'::uuid])`);
+check("former coach gets the client's name, photo and unit only", names.length === 1 && names[0].full_name === "Erin" && !("injuries" in names[0]));
+check("client_names leaves out people who were never your clients", (await as(S, `select * from public.client_names(array['${E}'::uuid])`)).length === 0);
+check("anon can't call client_names", !(await q(`select has_function_privilege('anon', 'public.client_names(uuid[])', 'execute') v`)).rows[0].v);
+
 console.log(failures ? `\n${failures} check(s) FAILED` : "\nAll database checks passed");
 process.exit(failures ? 1 : 0);

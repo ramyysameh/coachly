@@ -4,6 +4,7 @@ import { use, useState } from "react";
 import { ChevronLeft, Plus, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useAsync, must } from "@/lib/useAsync";
+import { clientNames } from "@/lib/clientNames";
 import { MEALS, mealTotals, NUTRITION_PLAN_SELECT, sortNutritionPlan, type NutritionPlan, type NutritionPlanMeal } from "@/lib/data";
 import { useProfile } from "@/components/AppShell";
 import { Badge, Button, Card, Empty, ErrorBox, Field, Input, NumInput, Spinner, Textarea } from "@/components/ui";
@@ -40,8 +41,7 @@ export default function NutritionPlanEditor({ params }: { params: Promise<{ id: 
     if (!p) return null;
     let clientName: string | null = null;
     if (p.client_id) {
-      const { data: c } = await supabase.from("profiles").select("full_name").eq("id", p.client_id).maybeSingle();
-      clientName = c?.full_name ?? null;
+      clientName = (await clientNames(supabase, [p.client_id])).get(p.client_id)?.full_name ?? null;
     }
     const d = toDraft(p);
     setPlan(d.plan);
