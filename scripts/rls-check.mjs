@@ -220,8 +220,8 @@ const f3 = await alex.rpc("coach_completed_sets", recent);
 check("Client gets no rows from coach_completed_sets", !f3.error && (f3.data ?? []).length === 0, f3.error?.message);
 const f4 = await anon.rpc("coach_completed_sets", recent);
 check("Anonymous cannot call coach_completed_sets", !!f4.error || (f4.data ?? []).length === 0, f4.error?.message);
-const f5 = await alex.rpc("is_coach_of_folder", { p_folder: ALEX });
-check("is_coach_of_folder is false for a client asking about themselves", !f5.error && f5.data === false, f5.error?.message);
+const f5 = await coach2.rpc("coach_can_see", { p_client: ALEX, p_on: "2000-01-01" });
+check("coach_can_see is false for a coach who never coached Alex", !f5.error && f5.data === false, f5.error?.message);
 
 // Signed-out requests
 check("Anonymous cannot read sessions", (await rows(anon.from("workout_sessions").select("id"))).n === 0);

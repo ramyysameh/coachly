@@ -227,17 +227,18 @@ test("archiving a client can be undone", async ({ browser }) => {
     await page.goto(url);
     const dialogs = trackDialogs(page);
     await page.getByRole("button", { name: "Archive" }).click();
-    await expect(page.getByRole("button", { name: "Restore" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Invite again" })).toBeVisible();
     await toast(page, "Client archived").getByRole("button", { name: "Undo" }).click();
     expect(dialogs).toEqual([]);
     await expect(page.getByRole("button", { name: "Archive" })).toBeVisible();
   } finally {
-    // restore if the client was left archived
+    // If the client was left archived, undo is still allowed within 10 minutes of archiving.
     await page.goto(url);
-    const restore = page.getByRole("button", { name: "Restore" });
-    await expect(page.getByRole("button", { name: /Archive|Restore/ }).first()).toBeVisible();
-    if (await restore.count()) await restore.click();
-    await expect(page.getByRole("button", { name: "Archive" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Archive" }).or(page.getByRole("link", { name: "Invite again" }))).toBeVisible();
+    if (await page.getByRole("link", { name: "Invite again" }).count()) {
+      const { api } = await signedInApi("coach@demo.test");
+      await api.rpc("set_client_status", { p_client: "22222222-2222-2222-2222-222222222222", p_status: "active" });
+    }
   }
 });
 

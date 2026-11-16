@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { Suspense, use, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Archive, ArchiveRestore, ChevronDown, ChevronLeft, ClipboardList, MessageCircle, Pencil, Salad, StickyNote, Trash2 } from "lucide-react";
+import { Archive, ChevronDown, ChevronLeft, ClipboardList, MessageCircle, Pencil, Salad, StickyNote, Trash2, UserPlus } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useAsync, must } from "@/lib/useAsync";
 import { getActivePlan, NUTRITION_PLAN_SELECT, SESSION_SELECT, sortNutritionPlan, sortSession, type NutritionPlan, type Plan, type Session, type Targets } from "@/lib/data";
@@ -96,7 +96,8 @@ function ClientProfileInner({ id }: { id: string }) {
             {active ? (
               <Button variant="danger" onClick={() => setStatus("archived")} loading={busy}><Archive className="size-4" /> Archive</Button>
             ) : (
-              <Button variant="secondary" onClick={() => setStatus("active")} loading={busy}><ArchiveRestore className="size-4" /> Restore</Button>
+              // Reconnecting needs the client's agreement: they accept a new invite.
+              <LinkButton href="/coach/invite" variant="secondary"><UserPlus className="size-4" /> Invite again</LinkButton>
             )}
           </>
         }
