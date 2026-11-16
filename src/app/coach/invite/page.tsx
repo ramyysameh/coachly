@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Check, Copy, Link2, UserPlus } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useAsync, must } from "@/lib/useAsync";
+import { clientNames } from "@/lib/clientNames";
 import { useProfile } from "@/components/AppShell";
 import { Badge, Button, Card, Empty, ErrorBox, Field, Input, PageHeader, Select, Spinner } from "@/components/ui";
 import { cn, errMsg, fmtDateTime } from "@/lib/utils";
@@ -29,17 +30,18 @@ export default function InvitePage() {
   const [manual, setManual] = useState<string | null>(null);
   const revoking = useSheet<string>();
 
-  const { data, loading, error: loadError, reload } = useAsync(
-    async () =>
-      must(
-        await supabase
-          .from("invitations")
-          .select("*, accepted:profiles!invitations_accepted_by_fkey(full_name)")
-          .eq("coach_id", profile.id)
-          .order("created_at", { ascending: false }),
-      ) as unknown as Invite[],
-    [profile.id],
-  );
+  const { data, loading, error: loadError, reload } = useAsync(async () => {
+    const rows = must(
+      await supabase
+        .from("invitations")
+        .select("*, accepted:profiles!invitations_accepted_by_fkey(full_name)")
+        .eq("coach_id", profile.id)
+        .order("created_at", { ascending: false }),
+    ) as unknown as (Invite & { accepted_by: string | null })[];
+    // Former clients' profiles aren't readable any more: their names come from client_names().
+    const names = await clientNames(supabase, rows.filter((i) => i.accepted_by && !i.accepted).map((i) => i.accepted_by));
+    return rows.map((i) => (i.accepted || !i.accepted_by ? i : { ...i, accepted: names.has(i.accepted_by) ? { full_name: names.get(i.accepted_by)!.full_name } : null }));
+  }, [profile.id]);
 
   const link = (token: string) => `${window.location.origin}/invite/${token}`;
 

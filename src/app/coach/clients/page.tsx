@@ -5,6 +5,7 @@ import { AlertTriangle, ChevronRight, Dumbbell, Medal, Scale, Search, UserPlus, 
 import { createClient } from "@/lib/supabase/client";
 import { useAsync, must } from "@/lib/useAsync";
 import { rpcAll } from "@/lib/rpcAll";
+import { clientNames } from "@/lib/clientNames";
 import { useProfile } from "@/components/AppShell";
 import { Avatar, Badge, Empty, ErrorBox, Input, LinkButton, PageHeader, Spinner, Tabs } from "@/components/ui";
 import { PLAN_SELECT, type Plan } from "@/lib/data";
@@ -50,6 +51,11 @@ export default function ClientsPage() {
       rpcAll(supabase, "coach_completed_sets", { p_from: addDays(today, -365), p_to: today }),
     ]);
     const profById = new Map((must(profs) as Prof[]).map((p) => [p.id, p]));
+    // Former clients' profiles aren't readable any more: show their name and photo only.
+    const names = await clientNames(supabase, ids.filter((x) => !profById.has(x)));
+    for (const n of names.values()) {
+      profById.set(n.id, { ...n, goal: null, goal_type: null, experience_level: null, date_of_birth: null, training_days_per_week: null, injuries: null });
+    }
     const planRows = must(plans) as Plan[];
     const sessionRows = must(sessions) as (CalSession & { client_id: string })[];
     const weightRows = must(weights) as { client_id: string; entry_date: string; weight_kg: number }[];

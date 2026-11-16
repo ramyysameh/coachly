@@ -4,6 +4,7 @@ import { useState } from "react";
 import { AlertTriangle, Pencil } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useAsync, must } from "@/lib/useAsync";
+import { clientNames } from "@/lib/clientNames";
 import type { Profile } from "@/lib/supabase/server";
 import { ageFrom, fmtHeight, GOALS, goalLabel, LEVELS, levelLabel, weightTrend } from "@/lib/profile";
 import { Avatar, Badge, Button, Card, ErrorBox, Field, NumInput, Select, Skeleton, Textarea } from "@/components/ui";
@@ -25,12 +26,19 @@ export default function ProfileHeader({ clientId, viewer, since, actions, archiv
   const [editing, setEditing] = useState(false);
   const { data, loading, error, reload } = useAsync(async () => {
     const [p, bw] = await Promise.all([
-      supabase.from("profiles").select("*").eq("id", clientId).single(),
+      supabase.from("profiles").select("*").eq("id", clientId).maybeSingle(),
       supabase.from("body_weights").select("entry_date, weight_kg").eq("client_id", clientId)
         .gte("entry_date", addDays(localDate(), -120)).order("entry_date", { ascending: false }).limit(60),
     ]);
-    return { profile: must(p) as Profile, weights: must(bw) as { entry_date: string; weight_kg: number }[] };
-  }, [clientId]);
+    let profile = must(p) as Profile | null;
+    if (!profile && viewer === "coach") {
+      // A former coach sees only the client's name, photo and unit, not their profile details.
+      const n = (await clientNames(supabase, [clientId])).get(clientId);
+      if (n) profile = { ...n, date_of_birth: null, height_cm: null, height_unit: "cm", goal_type: null, goal: null, experience_level: null, training_days_per_week: null, injuries: null } as unknown as Profile;
+    }
+    if (!profile) throw new Error("Couldn't load profile");
+    return { profile, weights: must(bw) as { entry_date: string; weight_kg: number }[] };
+  }, [clientId, viewer]);
 
   if (loading) return <Skeleton className="h-40" />;
   if (error || !data) return <ErrorBox message={error ?? "Couldn't load profile"} onRetry={reload} />;
