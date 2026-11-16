@@ -1,6 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // The Playwright tests build into their own folder (pointed at the local Supabase), so they
+  // never overwrite or reuse the normal .next build.
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   // Pages here are per-user and read auth cookies, so classic dynamic rendering fits better
   // than Cache Components' static shells.
   cacheComponents: false,

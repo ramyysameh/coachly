@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
+import { loadTestEnv } from "./testEnv";
 import { test, expect, type Browser, type BrowserContext, type Page } from "@playwright/test";
 
 // End-to-end acceptance flows from the brief, run with SEPARATE browser contexts
@@ -80,7 +80,7 @@ test("1. coach invites a client, client accepts, both see the relationship", asy
 });
 
 test("2. coach assigns a split; the correct workout appears on the client's Today screen", async () => {
-  await coach.getByRole("tab", { name: "Plan" }).click();
+  await coach.getByRole("tab", { name: "Training" }).click();
   await coach.getByLabel("Template").selectOption({ label: "Push / Pull / Legs (Sample)" });
   await coach.getByLabel("Plan name (optional)").fill(`PPL for ${client.name}`);
   await coach.getByRole("button", { name: /Copy & assign/ }).click();
@@ -283,9 +283,7 @@ test("6. coach and client chat live in two sessions; history and unread counts p
 
 test("7. a client cannot reach another client's data; an unrelated coach is denied", async ({ browser }) => {
   // Look up a real session id of Alex's, as Alex's coach, straight from the API
-  const env = Object.fromEntries(
-    readFileSync(".env.local", "utf8").split(/\r?\n/).map((l) => l.trim()).filter((l) => l.includes("=")).map((l) => [l.slice(0, l.indexOf("=")), l.slice(l.indexOf("=") + 1)]),
-  );
+  const env = loadTestEnv();
   const api = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
   await api.auth.signInWithPassword({ email: "coach@demo.test", password: PASSWORD });
   const { data: alexRow } = await api.from("workout_sessions").select("id").eq("client_id", ALEX).limit(1).single();

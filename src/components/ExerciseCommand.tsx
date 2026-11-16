@@ -27,7 +27,14 @@ export function ExerciseCommand({ exercises, search, onSearchChange, onPick, onI
     const key = e.movements?.name ?? "Other";
     groups.set(key, [...(groups.get(key) ?? []), e]);
   });
-  const ordered = [...groups.entries()].sort(([a], [b]) => (a === "Other" ? 1 : b === "Other" ? -1 : a.localeCompare(b)));
+  // cmdk 1.1.1 ranks items inside a group but never reorders the groups themselves (it looks a
+  // group up by an internal id that doesn't match its data-value). So while searching, put the
+  // group holding the best match first, scored with the same filter cmdk uses for the items.
+  const best = (items: Exercise[]) => (search.trim() ? Math.max(...items.map((e) => wordFilter(e.id, search, keywordsFor(e)))) : 0);
+  const ordered = [...groups.entries()]
+    .map(([movement, items]) => [movement, items, best(items)] as const)
+    .sort(([a, , sa], [b, , sb]) => sb - sa || (a === "Other" ? 1 : b === "Other" ? -1 : a.localeCompare(b)))
+    .map(([movement, items]) => [movement, items] as const);
 
   return (
     // cmdk names the input via aria-labelledby → its hidden <label>, so `label` is the input's accessible name.
@@ -49,7 +56,7 @@ export function ExerciseCommand({ exercises, search, onSearchChange, onPick, onI
               <div key={e.id} className="flex items-center gap-1">
                 <Command.Item
                   value={e.id}
-                  keywords={[e.name, e.movements?.name, e.equipment, ...e.primary_muscles.map(muscleLabel)].filter((k): k is string => !!k)}
+                  keywords={keywordsFor(e)}
                   onSelect={() => onPick(e)}
                   className="flex min-h-14 min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-xl px-3 py-2 text-left data-[selected=true]:bg-surface-2"
                 >
@@ -86,4 +93,9 @@ export function ExerciseCommand({ exercises, search, onSearchChange, onPick, onI
       </Command.List>
     </Command>
   );
+}
+
+/** What an exercise is matched on: name, movement, equipment and primary muscles. */
+function keywordsFor(e: Exercise): string[] {
+  return [e.name, e.movements?.name, e.equipment, ...e.primary_muscles.map(muscleLabel)].filter((k): k is string => !!k);
 }

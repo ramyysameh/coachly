@@ -1,11 +1,15 @@
 // Direct API checks for acceptance test 7: requests are sent straight to Supabase
 // with each demo user's token (no UI), swapping in other users' IDs.
-// Run: npm run test:rls   (needs the seeded demo data)
+// Run: npm run test:rls   (local Supabase with the seeded demo data, settings in .env.test.local)
 import { createClient } from "@supabase/supabase-js";
 
 const URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-if (!URL || !KEY) throw new Error("Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY (.env.local)");
+if (!URL || !KEY) throw new Error("Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY (.env.test.local)");
+// These checks sign in as the seeded demo accounts and write data: local Supabase only.
+if (!["127.0.0.1", "localhost", "[::1]"].includes(new globalThis.URL(URL).hostname)) {
+  throw new Error(`test:rls only runs against a local Supabase; got ${URL}`);
+}
 
 const ALEX = "22222222-2222-2222-2222-222222222222";
 const SAM = "33333333-3333-3333-3333-333333333333";
